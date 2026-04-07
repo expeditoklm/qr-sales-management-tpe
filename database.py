@@ -208,11 +208,19 @@ def mark_code_used(code_id: str):
 
 def get_codes_for_product(product_id: str) -> list:
     with get_conn() as conn:
-        rows = conn.execute(
-            "SELECT * FROM auth_codes WHERE product_id=? ORDER BY created_at DESC",
-            (product_id,)
-        ).fetchall()
+        rows = conn.execute("""
+            SELECT 
+                a.id, a.product_id, a.code, a.status, a.created_at,
+                v.verified_at,
+                v.latitude, v.longitude,
+                v.city, v.country
+            FROM auth_codes a
+            LEFT JOIN verifications v ON v.code_id = a.id
+            WHERE a.product_id = ?
+            ORDER BY a.created_at DESC
+        """, (product_id,)).fetchall()
     return [dict(r) for r in rows]
+
 
 # ─── VÉRIFICATIONS ───────────────────────────────────────────────────────────
 def insert_verification(v: dict):
@@ -265,3 +273,14 @@ def get_verification_stats() -> dict:
 
 init_db()
 print(f"[DB] SQLite prête → {DB_PATH}")
+
+def get_auth_code_by_id(code_id: str):
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    try:
+        row = conn.execute(
+            "SELECT * FROM auth_codes WHERE id = ?", (code_id,)
+        ).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()

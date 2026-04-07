@@ -17,6 +17,11 @@ from datetime import datetime
 import uuid, random, string, httpx
 from pathlib import Path
 
+from fastapi import UploadFile, File
+from fastapi.staticfiles import StaticFiles
+import shutil
+
+
 from models import (
     Product, ProductCreate, ProductUpdate,
     Sale, SaleCreate, SaleItem,
@@ -29,12 +34,17 @@ import database as db
 from auth import verify_api_key
 
 FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
+STATIC_DIR = Path(__file__).parent / "static" / "images"
+STATIC_DIR.mkdir(parents=True, exist_ok=True)
 
 app = FastAPI(
     title="ERP + Authentification Produits",
     description="Gestion stock, ventes & vérification d'authenticité client",
     version="3.2.0",
 )
+
+app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -43,6 +53,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+from fastapi.responses import FileResponse
+
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon():
+    return FileResponse(FRONTEND_DIR / "favicon.ico")
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -154,25 +170,58 @@ def update_stock(product_id: str, payload: StockUpdateRequest,
 # ── Image produit (appelé par Flutter ProductImageService) ───────────────────
 @app.patch("/api/products/{product_id}/image", response_model=Product, tags=["Produits"])
 @app.post( "/api/products/{product_id}/image", response_model=Product, tags=["Produits"])
-def update_product_image(product_id: str, payload: ProductImageUpdate,
-                         api_key: str = Depends(verify_api_key)):
-    """
-    Met à jour l'image de référence anti-fraude du produit.
-    Appelé par Flutter après persistReferenceImage().
-    Champs : image_url, reference_image_url, reference_image_hash
-    """
+
+@app.patch("/api/products/{product_id}/image", response_model=Product, tags=["Produits"])
+@app.post( "/api/products/{product_id}/image", response_model=Product, tags=["Produits"])
+async def update_product_image(
+    product_id: str,
+    request: Request,
+    api_key: str = Depends(verify_api_key),
+):
     p = db.get_product(product_id)
     if not p: raise HTTPException(404, "Produit introuvable")
     now = datetime.now().isoformat()
+
+    content_type = request.headers.get("content-type", "")
+
+    # ── CAS 1 : upload multipart/form-data (dashboard HTML) ──────────────
+    if "multipart/form-data" in content_type:
+        form = await request.form()
+        file: UploadFile = form.get("file")
+        if not file:
+            raise HTTPException(400, "Champ 'file' manquant")
+
+        # Détecter l'extension
+        ext = Path(file.filename).suffix.lower() if file.filename else ".jpg"
+        if ext not in {".jpg", ".jpeg", ".png", ".webp", ".gif"}:
+            ext = ".jpg"
+
+        filename = f"{product_id}{ext}"
+        dest = STATIC_DIR / filename
+        with dest.open("wb") as f:
+            shutil.copyfileobj(file.file, f)
+
+        image_url = f"/static/images/{filename}"
+        db.update_product_image(
+            product_id,
+            image_url      = image_url,
+            ref_image_url  = p.get("reference_image_url"),
+            ref_image_hash = p.get("reference_image_hash"),
+            updated_at     = now,
+        )
+        return db.get_product(product_id)
+
+    # ── CAS 2 : JSON (Flutter ProductImageService) ────────────────────────
+    body = await request.json()
+    payload = ProductImageUpdate(**body)
     db.update_product_image(
         product_id,
-        image_url       = payload.image_url or p.get("image_url"),
-        ref_image_url   = payload.reference_image_url or p.get("reference_image_url"),
-        ref_image_hash  = payload.reference_image_hash or p.get("reference_image_hash"),
-        updated_at      = now,
+        image_url      = payload.image_url      or p.get("image_url"),
+        ref_image_url  = payload.reference_image_url  or p.get("reference_image_url"),
+        ref_image_hash = payload.reference_image_hash or p.get("reference_image_hash"),
+        updated_at     = now,
     )
     return db.get_product(product_id)
-
 
 # ════════════════════════════════════════════════════════════════════════════
 # VENTES  (API Key requise)
@@ -487,8 +536,34 @@ def all_verifications_route(api_key: str = Depends(verify_api_key)):
 # Aliases utilisés dans certains frontends existants
 @app.get("/api/authenticity/stats", tags=["Stats"], include_in_schema=False)
 def auth_stats(api_key: str = Depends(verify_api_key)):
-    return db.get_verification_stats()
-
+    with db.get_conn() as conn:
+        total_codes = conn.execute("SELECT COUNT(*) FROM auth_codes").fetchone()[0]
+        used_codes  = conn.execute("SELECT COUNT(*) FROM auth_codes WHERE status='used'").fetchone()[0]
+        total_verif = conn.execute("SELECT COUNT(*) FROM verifications").fetchone()[0]
+        # Tentatives suspectes = vérifications sur codes déjà utilisés (rejoués)
+        fake_attempts = conn.execute("""
+            SELECT COUNT(*) FROM verifications v
+            JOIN auth_codes a ON v.code_id = a.id
+            WHERE a.status = 'used'
+              AND v.verified_at != (
+                  SELECT MIN(verified_at) FROM verifications v2 WHERE v2.code_id = a.id
+              )
+        """).fetchone()[0]
+    return {
+        "total_codes":        total_codes,
+        "used_codes":         used_codes,
+        "total_verifications": total_verif,
+        "fake_attempts":      fake_attempts,
+    }
 @app.get("/api/authenticity/logs", tags=["Stats"], include_in_schema=False)
 def auth_logs(api_key: str = Depends(verify_api_key)):
-    return db.all_verifications()
+    logs = db.all_verifications()
+    # Enrichir chaque log avec la valeur textuelle du code
+    for log in logs:
+        code_id = log.get("code_id")
+        if code_id:
+            auth_code = db.get_auth_code_by_id(code_id)   # ← voir note ci-dessous
+            log["code"] = auth_code["code"] if auth_code else code_id
+        else:
+            log["code"] = "—"
+    return logs

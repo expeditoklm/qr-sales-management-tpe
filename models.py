@@ -100,6 +100,12 @@ class AuthCode(BaseModel):
     code:       str
     status:     str
     created_at: str
+    # Champs joints depuis verifications
+    verified_at: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    city: Optional[str] = None
+    country: Optional[str] = None
 
 
 class GenerateCodesRequest(BaseModel):
