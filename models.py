@@ -98,7 +98,7 @@ class AuthCode(BaseModel):
     id:         str
     product_id: str
     code:       str
-    status:     str
+    status:     str 
     created_at: str
     # Champs joints depuis verifications
     verified_at: Optional[str] = None
