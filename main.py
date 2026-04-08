@@ -1,79 +1,131 @@
 """
-main.py — ERP + Authentification Produits v3.2
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Compatibilité totale :
-  • App Flutter  : tous champs anti-fraude (consumerCode, referenceImageHash…)
-  • Webhook sale : /api/webhook/sale
-  • Image produit: /api/products/{id}/image  (PATCH)
-  • Client final : /api/verify  +  /api/public/verify
-  • Dashboard web: servi sur /  et /verify sur /verify
+main.py — ERP TPE QR v4.0
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Nouveautés v4 :
+  • Auth JWT réel   (POST /auth/register|login|refresh|invite|accept-invite)
+  • Multi-tenant    (une DB SQLite par boutique)
+  • Abonnements     (GET|POST /billing/*)
+  • Quotas par plan (produits / users / transactions)
+  • Super-admin     (/admin/companies, /admin/stats)
+  • Rate limiting   (/api/verify et /auth/login)
+  • CORS restreint  (domaines du .env)
+  • .env obligatoire pour secrets
+  • Rétrocompat API Key X-API-Key (Flutter non migré)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 """
 
-from fastapi import FastAPI, HTTPException, Depends, Request
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
-from typing import List, Optional
-from datetime import datetime
-import uuid, random, string, httpx
+import uuid, random, string, httpx, secrets
+from datetime import datetime, timezone
 from pathlib import Path
+from typing import Annotated, List
 
-from fastapi import UploadFile, File
+from fastapi import (
+    FastAPI, HTTPException, Depends, Request,
+    UploadFile, File, status
+)
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
-import shutil
 
-
-from models import (
-    Product, ProductCreate, ProductUpdate,
-    Sale, SaleCreate, SaleItem,
-    StockUpdateRequest, WebhookPayload,
-    ProductImageUpdate,
-    AuthCode, GenerateCodesRequest,
-    VerifyRequest, VerifyResponse,
-)
+from config import get_settings
 import database as db
-from auth import verify_api_key
-
-FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
-STATIC_DIR = Path(__file__).parent / "static" / "images"
-STATIC_DIR.mkdir(parents=True, exist_ok=True)
-
-app = FastAPI(
-    title="ERP + Authentification Produits",
-    description="Gestion stock, ventes & vérification d'authenticité client",
-    version="3.2.0",
+from auth import (
+    hash_password, verify_password,
+    create_access_token, create_refresh_token, create_invite_token,
+    get_current_user, get_admin_user, get_superadmin_user,
+    get_current_user_or_apikey,
+    TokenData,
+    _decode_jwt,
+)
+from models import *
+from rate_limit import make_limiter
+from storage import save_product_image
+from quota import (
+    check_product_quota, check_user_quota,
+    check_transaction_quota, check_subscription_active,
 )
 
-app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
+cfg = get_settings()
 
+# ─── Paths ────────────────────────────────────────────────────────────────────
+FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
+STATIC_DIR   = Path(__file__).parent / "static"
+STATIC_DIR.mkdir(parents=True, exist_ok=True)
+(STATIC_DIR / "images").mkdir(exist_ok=True)
+
+# ─── Rate limiters ────────────────────────────────────────────────────────────
+_rl_verify = make_limiter(cfg.RATE_LIMIT_VERIFY_REQUESTS, cfg.RATE_LIMIT_VERIFY_WINDOW)
+_rl_login  = make_limiter(cfg.RATE_LIMIT_LOGIN_REQUESTS,  cfg.RATE_LIMIT_LOGIN_WINDOW)
+
+# ─── App ──────────────────────────────────────────────────────────────────────
+app = FastAPI(
+    title="ERP TPE QR",
+    description="Gestion stock, ventes & authenticité produits — multi-tenant SaaS",
+    version="4.0.0",
+)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=cfg.ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-from fastapi.responses import FileResponse
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+
+def _generate_company_secret_key() -> str:
+    return secrets.token_urlsafe(32)
+
+
+def _ensure_company_secret(company_id: str) -> str:
+    company = db.get_company(company_id)
+    if not company:
+        raise HTTPException(404, "Boutique introuvable")
+    secret_key = (company.get("secret_key") or "").strip()
+    if secret_key:
+        return secret_key
+    secret_key = _generate_company_secret_key()
+    db.update_company_secret_key(company_id, secret_key)
+    return secret_key
+
+
+def _token_response_for_user(user: dict, company: dict | None = None) -> TokenResponse:
+    company = company or db.get_company(user["company_id"])
+    secret_key = _ensure_company_secret(user["company_id"])
+    return TokenResponse(
+        access_token=create_access_token(user["id"], user["company_id"], user["role"]),
+        refresh_token=create_refresh_token(user["id"], user["company_id"], user["role"]),
+        user_id=user["id"],
+        company_id=user["company_id"],
+        company_name=company["name"] if company else "",
+        secret_key=secret_key,
+        role=user["role"],
+        plan=db.get_active_plan(user["company_id"]),
+    )
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# PAGES HTML
+# ════════════════════════════════════════════════════════════════════════════
 
 @app.get("/favicon.ico", include_in_schema=False)
 def favicon():
-    return FileResponse(FRONTEND_DIR / "favicon.ico")
-
-
-# ════════════════════════════════════════════════════════════════════════════
-# PAGES HTML  (résout le problème file:// CORS)
-# ════════════════════════════════════════════════════════════════════════════
+    p = FRONTEND_DIR / "favicon.ico"
+    return FileResponse(p) if p.exists() else HTTPException(404)
 
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
 def page_dashboard():
-    """Dashboard ERP → http://localhost:8000/"""
     return HTMLResponse((FRONTEND_DIR / "index.html").read_text(encoding="utf-8"))
 
-@app.get("/verify",     response_class=HTMLResponse, include_in_schema=False)
-@app.get("/verify.html",response_class=HTMLResponse, include_in_schema=False)
+@app.get("/superadmin", response_class=HTMLResponse, include_in_schema=False)
+def page_superadmin():
+    return HTMLResponse((FRONTEND_DIR / "superadmin.html").read_text(encoding="utf-8"))
+
+@app.get("/verify",      response_class=HTMLResponse, include_in_schema=False)
+@app.get("/verify.html", response_class=HTMLResponse, include_in_schema=False)
 def page_verify():
-    """Page client → http://localhost:8000/verify"""
     return HTMLResponse((FRONTEND_DIR / "verify.html").read_text(encoding="utf-8"))
 
 
@@ -84,186 +136,720 @@ def page_verify():
 @app.get("/health", tags=["Health"])
 def health():
     return {
-        "status": "healthy",
-        "version": "3.2.0",
-        "timestamp": datetime.now().isoformat(),
-        "verify_url": "http://localhost:8000/verify",
+        "status":     "healthy",
+        "version":    "4.0.0",
+        "timestamp":  datetime.now().isoformat(),
+        "verify_url": "/verify",
     }
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# PRODUITS  (API Key requise)
+# AUTH  — inscription, connexion, refresh, invitations
 # ════════════════════════════════════════════════════════════════════════════
 
-def _blank(p: dict) -> dict:
-    """S'assure que les clés optionnelles existent (pour INSERT)."""
-    defaults = {
-        "company_id": None, "image_url": None,
-        "reference_image_url": None, "reference_image_hash": None,
-        "consumer_code": None,
+def _ensure_superadmin():
+    """Crée le super-admin au premier démarrage s'il n'existe pas."""
+    company_id = "superadmin"
+    now = datetime.now(tz=timezone.utc).isoformat()
+    company = db.get_company(company_id)
+    if not company:
+        db.insert_company({
+            "id": company_id, "name": "Super Admin",
+            "email": cfg.SUPERADMIN_EMAIL,
+            "secret_key": _generate_company_secret_key(),
+            "plan": "enterprise", "status": "active",
+            "created_at": now,
+        })
+    else:
+        _ensure_company_secret(company_id)
+    if db.get_user_by_email(cfg.SUPERADMIN_EMAIL):
+        return
+    db.insert_user({
+        "id":            str(uuid.uuid4()),
+        "company_id":    company_id,
+        "email":         cfg.SUPERADMIN_EMAIL,
+        "password_hash": hash_password(cfg.SUPERADMIN_PASSWORD),
+        "role":          "superadmin",
+        "is_active":     1,
+        "created_at":    now,
+    })
+    print(f"[AUTH] Super-admin créé : {cfg.SUPERADMIN_EMAIL}")
+
+_ensure_superadmin()
+
+
+DEMO_COMPANY = {
+    "id": "demo-shop",
+    "name": "Boutique Demo",
+    "email": "demo@tpe-qr.com",
+    "plan": "pro",
+    "status": "active",
+}
+
+DEMO_USERS = [
+    {"email": "cashier@demo.tpe-qr.com", "password": "CashierDemo123!", "role": "employee", "label": "caissier"},
+    {"email": "manager@demo.tpe-qr.com", "password": "ManagerDemo123!", "role": "manager", "label": "manager"},
+    {"email": "admin@demo.tpe-qr.com", "password": "AdminDemo123!", "role": "admin", "label": "admin"},
+]
+
+
+def _ensure_demo_seed():
+    now = datetime.now(tz=timezone.utc).isoformat()
+    company = db.get_company(DEMO_COMPANY["id"])
+    if not company:
+        db.insert_company({
+            **DEMO_COMPANY,
+            "secret_key": _generate_company_secret_key(),
+            "created_at": now,
+        })
+        db.init_tenant_db(DEMO_COMPANY["id"])
+    secret_key = _ensure_company_secret(DEMO_COMPANY["id"])
+    db.upsert_subscription({
+        "id":                     str(uuid.uuid4()),
+        "company_id":             DEMO_COMPANY["id"],
+        "plan":                   DEMO_COMPANY["plan"],
+        "status":                 "active",
+        "start_date":             now,
+        "end_date":               None,
+        "stripe_subscription_id": None,
+        "stripe_customer_id":     None,
+        "updated_at":             now,
+    })
+
+    for demo_user in DEMO_USERS:
+        if db.get_user_by_email(demo_user["email"]):
+            continue
+        db.insert_user({
+            "id":            str(uuid.uuid4()),
+            "company_id":    DEMO_COMPANY["id"],
+            "email":         demo_user["email"],
+            "password_hash": hash_password(demo_user["password"]),
+            "role":          demo_user["role"],
+            "is_active":     1,
+            "created_at":    now,
+        })
+
+    print("[AUTH] Demo company prête :")
+    print(f"        company_id={DEMO_COMPANY['id']}")
+    print(f"        secret_key={secret_key}")
+    for demo_user in DEMO_USERS:
+        print(
+            f"        {demo_user['label']}: "
+            f"{demo_user['email']} / {demo_user['password']}"
+        )
+    print(
+        "        superadmin: "
+        f"{cfg.SUPERADMIN_EMAIL} / {cfg.SUPERADMIN_PASSWORD}"
+    )
+
+
+_ensure_demo_seed()
+
+
+@app.post("/auth/register", response_model=TokenResponse, status_code=201, tags=["Auth"])
+def register(payload: RegisterRequest):
+    """Inscription d'une nouvelle boutique + premier utilisateur admin."""
+    if db.get_company_by_email(payload.email):
+        raise HTTPException(409, "Email déjà utilisé")
+
+    now        = datetime.now(tz=timezone.utc).isoformat()
+    company_id = str(uuid.uuid4())
+    user_id    = str(uuid.uuid4())
+    secret_key = _generate_company_secret_key()
+
+    db.insert_company({
+        "id": company_id, "name": payload.company_name,
+        "secret_key": secret_key,
+        "email": payload.email, "plan": "free",
+        "status": "active", "created_at": now,
+    })
+    # Créer la base tenant
+    db.init_tenant_db(company_id)
+
+    db.insert_user({
+        "id":            user_id,
+        "company_id":    company_id,
+        "email":         payload.email,
+        "password_hash": hash_password(payload.password),
+        "role":          "admin",
+        "is_active":     1,
+        "created_at":    now,
+    })
+    # Abonnement free par défaut
+    db.upsert_subscription({
+        "id":                     str(uuid.uuid4()),
+        "company_id":             company_id,
+        "plan":                   "free",
+        "status":                 "active",
+        "start_date":             now,
+        "end_date":               None,
+        "stripe_subscription_id": None,
+        "stripe_customer_id":     None,
+        "updated_at":             now,
+    })
+
+    return _token_response_for_user({
+        "id": user_id,
+        "company_id": company_id,
+        "role": "admin",
+    }, {
+        "id": company_id,
+        "name": payload.company_name,
+        "secret_key": secret_key,
+    })
+
+
+@app.post("/auth/login", response_model=TokenResponse, tags=["Auth"])
+async def login(payload: LoginRequest, request: Request):
+    """Connexion — retourne un JWT access + refresh."""
+    _rl_login.check(request)
+
+    user = db.get_user_by_email(payload.email)
+    if not user or not verify_password(payload.password, user["password_hash"]):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Email ou mot de passe incorrect")
+    if not user["is_active"]:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Compte désactivé")
+    if user["company_status"] != "active":
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Boutique suspendue")
+
+    company = db.get_company(user["company_id"])
+    return _token_response_for_user(user, company)
+
+
+@app.post("/auth/refresh", response_model=TokenResponse, tags=["Auth"])
+def refresh(payload: RefreshRequest):
+    """Renouvelle l'access token via le refresh token."""
+    p = _decode_jwt(payload.refresh_token)
+    if p.get("type") != "refresh":
+        raise HTTPException(401, "Token de type invalide")
+    user    = db.get_user_by_id(p["sub"])
+    if not user or not user["is_active"]:
+        raise HTTPException(401, "Utilisateur inactif")
+    company = db.get_company(p["company_id"])
+    return _token_response_for_user(user, company)
+
+
+@app.post("/auth/invite", status_code=201, tags=["Auth"])
+def invite_user(
+    payload: InviteRequest,
+    current: Annotated[TokenData, Depends(get_admin_user)],
+):
+    """Invite un employé dans la boutique (admin requis)."""
+    check_user_quota(current.company_id)
+    token = create_invite_token(current.company_id, payload.email, payload.role)
+    # En prod : envoyer par email. Ici on retourne le lien.
+    return {
+        "invite_token": token,
+        "invite_link":  f"/auth/accept-invite?token={token}",
+        "email":        payload.email,
+        "role":         payload.role,
+        "expires_in":   f"{cfg.INVITE_TOKEN_EXPIRE_HOURS}h",
     }
-    return {**defaults, **p}
+
+
+@app.post("/auth/accept-invite", response_model=TokenResponse, tags=["Auth"])
+def accept_invite(payload: AcceptInviteRequest):
+    """L'employé définit son mot de passe via le token d'invitation."""
+    invite = db.get_invite(payload.token)
+    if not invite:
+        raise HTTPException(400, "Token invalide ou expiré")
+    from datetime import datetime, timezone
+    if datetime.now(tz=timezone.utc).isoformat() > invite["expires_at"]:
+        raise HTTPException(400, "Invitation expirée")
+    if db.get_user_by_email(invite["email"]):
+        raise HTTPException(409, "Email déjà utilisé")
+
+    now     = datetime.now(tz=timezone.utc).isoformat()
+    user_id = str(uuid.uuid4())
+    db.insert_user({
+        "id":            user_id,
+        "company_id":    invite["company_id"],
+        "email":         invite["email"],
+        "password_hash": hash_password(payload.password),
+        "role":          invite["role"],
+        "is_active":     1,
+        "created_at":    now,
+    })
+    db.mark_invite_used(payload.token)
+
+    company = db.get_company(invite["company_id"])
+    return _token_response_for_user({
+        "id": user_id,
+        "company_id": invite["company_id"],
+        "role": invite["role"],
+    }, company)
+
+
+@app.get("/auth/demo-credentials", tags=["Auth"])
+def demo_credentials():
+    company = db.get_company(DEMO_COMPANY["id"]) or {}
+    return {
+        "company_id": DEMO_COMPANY["id"],
+        "company_name": DEMO_COMPANY["name"],
+        "secret_key": company.get("secret_key", ""),
+        "accounts": [
+            {
+                "label": demo_user["label"],
+                "email": demo_user["email"],
+                "password": demo_user["password"],
+                "role": demo_user["role"],
+            }
+            for demo_user in DEMO_USERS
+        ] + [{
+            "label": "superadmin",
+            "email": cfg.SUPERADMIN_EMAIL,
+            "password": cfg.SUPERADMIN_PASSWORD,
+            "role": "superadmin",
+        }],
+    }
+
+
+@app.get("/auth/me", response_model=UserOut, tags=["Auth"])
+def me(current: Annotated[TokenData, Depends(get_current_user)]):
+    user = db.get_user_by_id(current.user_id)
+    if not user:
+        raise HTTPException(404, "Utilisateur introuvable")
+    return user
+
+@app.get("/auth/users", response_model=List[UserOut], tags=["Auth"])
+def list_users(current: Annotated[TokenData, Depends(get_admin_user)]):
+    return db.list_users_for_company(current.company_id)
+
+@app.delete("/auth/users/{user_id}", tags=["Auth"])
+def deactivate_user(
+    user_id: str,
+    current: Annotated[TokenData, Depends(get_admin_user)],
+):
+    user = db.get_user_by_id(user_id)
+    if not user or user["company_id"] != current.company_id:
+        raise HTTPException(404, "Utilisateur introuvable")
+    db.deactivate_user(user_id)
+    return {"message": "Utilisateur désactivé"}
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# BILLING
+# ════════════════════════════════════════════════════════════════════════════
+
+@app.get("/billing/status", response_model=SubscriptionStatus, tags=["Billing"])
+def billing_status(current: Annotated[TokenData, Depends(get_current_user)]):
+    sub  = db.get_subscription(current.company_id)
+    plan = db.get_active_plan(current.company_id)
+    limits = cfg.PLAN_LIMITS.get(plan, cfg.PLAN_LIMITS["free"])
+    return SubscriptionStatus(
+        company_id=current.company_id,
+        plan=plan,
+        status=sub["status"] if sub else "active",
+        start_date=sub["start_date"] if sub else None,
+        end_date=sub["end_date"] if sub else None,
+        limits=limits,
+    )
+
+
+def _stripe_price_to_plan_map() -> dict[str, str]:
+    return {
+        price_id: plan
+        for plan, price_id in cfg.STRIPE_PRICES.items()
+        if price_id
+    }
+
+
+def _stripe_plan_from_price_id(price_id: str | None) -> str | None:
+    if not price_id:
+        return None
+    return _stripe_price_to_plan_map().get(price_id)
+
+
+def _stripe_plan_from_subscription_object(obj: dict) -> str | None:
+    items = ((obj.get("items") or {}).get("data") or [])
+    for item in items:
+        price = item.get("price") or {}
+        plan = _stripe_plan_from_price_id(price.get("id"))
+        if plan:
+            return plan
+    return None
+
+
+@app.post("/billing/create-checkout-session", tags=["Billing"])
+def create_checkout(
+    payload: CreateCheckoutRequest,
+    current: Annotated[TokenData, Depends(get_admin_user)],
+):
+    """Crée une session Stripe Checkout (nécessite STRIPE_SECRET_KEY dans .env)."""
+    if not cfg.STRIPE_SECRET_KEY:
+        raise HTTPException(501, "Stripe non configuré — ajoutez STRIPE_SECRET_KEY dans .env")
+    price_id = cfg.STRIPE_PRICES.get(payload.plan, "")
+    if not price_id:
+        raise HTTPException(501, f"Prix Stripe non configuré pour le plan '{payload.plan}'")
+
+    try:
+        import stripe
+        stripe.api_key = cfg.STRIPE_SECRET_KEY
+        session = stripe.checkout.Session.create(
+            payment_method_types=["card"],
+            mode="subscription",
+            line_items=[{"price": price_id, "quantity": 1}],
+            success_url=payload.success_url + "?session_id={CHECKOUT_SESSION_ID}",
+            cancel_url=payload.cancel_url,
+            metadata={"company_id": current.company_id, "plan": payload.plan},
+        )
+        return {"url": session.url, "session_id": session.id}
+    except ImportError:
+        raise HTTPException(501, "Package stripe non installé — pip install stripe")
+    except Exception as e:
+        raise HTTPException(500, f"Erreur Stripe: {e}")
+
+
+@app.post("/billing/webhook", tags=["Billing"], include_in_schema=False)
+async def stripe_webhook(request: Request):
+    """Reçoit les événements Stripe (paiement, annulation…)."""
+    if not cfg.STRIPE_WEBHOOK_SECRET:
+        raise HTTPException(501, "Stripe webhook non configuré")
+    try:
+        import stripe
+        stripe.api_key = cfg.STRIPE_SECRET_KEY
+        body      = await request.body()
+        sig       = request.headers.get("stripe-signature", "")
+        event     = stripe.Webhook.construct_event(body, sig, cfg.STRIPE_WEBHOOK_SECRET)
+    except Exception as e:
+        raise HTTPException(400, f"Webhook invalide: {e}")
+
+    now = datetime.now(tz=timezone.utc).isoformat()
+    ev_type = event["type"]
+    obj     = event["data"]["object"]
+
+    if ev_type == "checkout.session.completed":
+        company_id   = obj["metadata"].get("company_id")
+        sub_id       = obj.get("subscription")
+        customer_id  = obj.get("customer")
+        plan         = obj.get("metadata", {}).get("plan")
+        if not plan and obj.get("id"):
+            try:
+                line_items = stripe.checkout.Session.list_line_items(obj["id"], limit=10)
+                for item in line_items.get("data", []):
+                    price = item.get("price") or {}
+                    plan = _stripe_plan_from_price_id(price.get("id"))
+                    if plan:
+                        break
+            except Exception:
+                plan = None
+        if not plan:
+            plan = "basic"
+        if company_id:
+            db.upsert_subscription({
+                "id":                     str(uuid.uuid4()),
+                "company_id":             company_id,
+                "plan":                   "basic",  # à affiner via price_id
+                "status":                 "active",
+                "start_date":             now,
+                "end_date":               None,
+                "stripe_subscription_id": sub_id,
+                "stripe_customer_id":     customer_id,
+                "updated_at":             now,
+            })
+            if plan != "basic":
+                sub = db.get_subscription(company_id)
+                if sub:
+                    db.upsert_subscription({
+                        "id":                     sub["id"],
+                        "company_id":             company_id,
+                        "plan":                   plan,
+                        "status":                 sub["status"],
+                        "start_date":             sub["start_date"],
+                        "end_date":               sub["end_date"],
+                        "stripe_subscription_id": sub["stripe_subscription_id"],
+                        "stripe_customer_id":     sub["stripe_customer_id"],
+                        "updated_at":             now,
+                    })
+
+    elif ev_type in ("customer.subscription.updated",):
+        sub_id = obj["id"]
+        status_stripe = obj["status"]  # active, past_due, canceled…
+        with db._shared_conn() as conn:
+            conn.execute(
+                "UPDATE subscriptions SET status=?, updated_at=? WHERE stripe_subscription_id=?",
+                (status_stripe, now, sub_id)
+            )
+        plan = _stripe_plan_from_subscription_object(obj)
+        if plan:
+            with db._shared_conn() as conn:
+                conn.execute(
+                    "UPDATE subscriptions SET plan=?, updated_at=? WHERE stripe_subscription_id=?",
+                    (plan, now, sub_id)
+                )
+
+    elif ev_type == "customer.subscription.deleted":
+        sub_id = obj["id"]
+        with db._shared_conn() as conn:
+            conn.execute(
+                "UPDATE subscriptions SET status='canceled', end_date=?, updated_at=? "
+                "WHERE stripe_subscription_id=?",
+                (now, now, sub_id)
+            )
+
+    return {"received": True}
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# SUPER-ADMIN
+# ════════════════════════════════════════════════════════════════════════════
+
+@app.get("/admin/companies", response_model=List[CompanyOut], tags=["Admin"])
+def admin_list_companies(
+    _: Annotated[TokenData, Depends(get_superadmin_user)]
+):
+    return db.all_companies()
+
+
+@app.patch("/admin/companies/{company_id}/suspend", tags=["Admin"])
+def admin_suspend(
+    company_id: str,
+    _: Annotated[TokenData, Depends(get_superadmin_user)],
+):
+    if not db.get_company(company_id):
+        raise HTTPException(404, "Boutique introuvable")
+    db.update_company_status(company_id, "suspended")
+    return {"message": f"Boutique {company_id} suspendue"}
+
+
+@app.patch("/admin/companies/{company_id}/activate", tags=["Admin"])
+def admin_activate(
+    company_id: str,
+    _: Annotated[TokenData, Depends(get_superadmin_user)],
+):
+    if not db.get_company(company_id):
+        raise HTTPException(404, "Boutique introuvable")
+    db.update_company_status(company_id, "active")
+    return {"message": f"Boutique {company_id} réactivée"}
+
+
+@app.patch("/admin/companies/{company_id}/plan", tags=["Admin"])
+def admin_set_plan(
+    company_id: str,
+    plan: str,
+    _: Annotated[TokenData, Depends(get_superadmin_user)],
+):
+    if plan not in cfg.PLAN_LIMITS:
+        raise HTTPException(400, f"Plan invalide. Valeurs: {list(cfg.PLAN_LIMITS.keys())}")
+    if not db.get_company(company_id):
+        raise HTTPException(404, "Boutique introuvable")
+    now = datetime.now(tz=timezone.utc).isoformat()
+    db.upsert_subscription({
+        "id":                     str(uuid.uuid4()),
+        "company_id":             company_id,
+        "plan":                   plan,
+        "status":                 "active",
+        "start_date":             now,
+        "end_date":               None,
+        "stripe_subscription_id": None,
+        "stripe_customer_id":     None,
+        "updated_at":             now,
+    })
+    return {"message": f"Plan de {company_id} mis à jour → {plan}"}
+
+
+@app.get("/admin/stats", tags=["Admin"])
+def admin_stats(_: Annotated[TokenData, Depends(get_superadmin_user)]):
+    return db.global_stats()
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# PRODUITS  (JWT requis — company_id extrait du token)
+# ════════════════════════════════════════════════════════════════════════════
+
+def _enrich(p: dict, company_id: str) -> dict:
+    """Ajoute company_id au dict pour compatibilité Flutter."""
+    p["company_id"] = company_id
+    return p
+
 
 @app.get("/api/products", response_model=List[Product], tags=["Produits"])
-def list_products(api_key: str = Depends(verify_api_key)):
-    return db.all_products()
+def list_products(
+    current: Annotated[TokenData, Depends(get_current_user_or_apikey)]
+):
+    cid = current.company_id
+    return [_enrich(p, cid) for p in db.all_products(cid)]
+
 
 @app.get("/api/products/{product_id}", response_model=Product, tags=["Produits"])
-def get_product(product_id: str, api_key: str = Depends(verify_api_key)):
-    p = db.get_product(product_id)
-    if not p: raise HTTPException(404, "Produit introuvable")
-    return p
+def get_product(
+    product_id: str,
+    current: Annotated[TokenData, Depends(get_current_user_or_apikey)],
+):
+    p = db.get_product(current.company_id, product_id)
+    if not p:
+        raise HTTPException(404, "Produit introuvable")
+    return _enrich(p, current.company_id)
+
 
 @app.post("/api/products", response_model=Product, status_code=201, tags=["Produits"])
-def create_product(payload: ProductCreate, api_key: str = Depends(verify_api_key)):
+def create_product(
+    payload: ProductCreate,
+    current: Annotated[TokenData, Depends(get_current_user_or_apikey)],
+):
+    check_subscription_active(current.company_id)
+    check_product_quota(current.company_id)
     now = datetime.now().isoformat()
     pid = str(uuid.uuid4())
-    product = _blank({
-        "id": pid,
+    p = {
+        "id":  pid,
         "sku": payload.sku or f"SKU-{pid[:8].upper()}",
-        "name": payload.name,
+        "name":        payload.name,
         "description": payload.description,
-        "price": payload.price,
-        "stock": payload.stock,
-        "company_id":           payload.company_id,
-        "image_url":            payload.image_url,
-        "reference_image_url":  payload.reference_image_url,
-        "reference_image_hash": payload.reference_image_hash,
-        "consumer_code":        payload.consumer_code,
+        "price":       payload.price,
+        "stock":       payload.stock,
+        "image_url":             payload.image_url,
+        "reference_image_url":   payload.reference_image_url,
+        "reference_image_hash":  payload.reference_image_hash,
+        "consumer_code":         payload.consumer_code,
         "created_at": now,
         "updated_at": now,
-    })
-    db.insert_product(product)
-    return product
+    }
+    db.insert_product(current.company_id, p)
+    return _enrich(p, current.company_id)
+
 
 @app.put("/api/products/{product_id}", response_model=Product, tags=["Produits"])
-def update_product(product_id: str, payload: ProductUpdate,
-                   api_key: str = Depends(verify_api_key)):
-    p = db.get_product(product_id)
-    if not p: raise HTTPException(404, "Produit introuvable")
-    p.update({k: v for k, v in payload.dict(exclude_unset=True).items() if v is not None or k in payload.dict(exclude_unset=True)})
+def update_product(
+    product_id: str,
+    payload: ProductUpdate,
+    current: Annotated[TokenData, Depends(get_current_user_or_apikey)],
+):
+    p = db.get_product(current.company_id, product_id)
+    if not p:
+        raise HTTPException(404, "Produit introuvable")
+    p.update({k: v for k, v in payload.model_dump(exclude_unset=True).items()})
     p["updated_at"] = datetime.now().isoformat()
-    db.update_product_full(_blank(p))
-    return p
+    db.update_product_full(current.company_id, p)
+    return _enrich(p, current.company_id)
+
 
 @app.delete("/api/products/{product_id}", tags=["Produits"])
-def delete_product(product_id: str, api_key: str = Depends(verify_api_key)):
-    if not db.get_product(product_id): raise HTTPException(404, "Produit introuvable")
-    db.delete_product(product_id)
+def delete_product(
+    product_id: str,
+    current: Annotated[TokenData, Depends(get_current_user_or_apikey)],
+):
+    if not db.get_product(current.company_id, product_id):
+        raise HTTPException(404, "Produit introuvable")
+    db.delete_product(current.company_id, product_id)
     return {"message": "Produit supprimé"}
 
+
 @app.patch("/api/products/{product_id}/stock", response_model=Product, tags=["Produits"])
-def update_stock(product_id: str, payload: StockUpdateRequest,
-                 api_key: str = Depends(verify_api_key)):
-    p = db.get_product(product_id)
-    if not p: raise HTTPException(404, "Produit introuvable")
+def update_stock(
+    product_id: str,
+    payload: StockUpdateRequest,
+    current: Annotated[TokenData, Depends(get_current_user_or_apikey)],
+):
+    p = db.get_product(current.company_id, product_id)
+    if not p:
+        raise HTTPException(404, "Produit introuvable")
     new_stock = p["stock"] + payload.delta
     if new_stock < 0:
         raise HTTPException(400, f"Stock insuffisant (actuel: {p['stock']})")
     now = datetime.now().isoformat()
-    db.update_stock(product_id, new_stock, now)
-    p["stock"] = new_stock
+    db.update_stock(current.company_id, product_id, new_stock, now)
+    p["stock"]      = new_stock
     p["updated_at"] = now
-    return p
+    return _enrich(p, current.company_id)
 
-
-# ── Image produit (appelé par Flutter ProductImageService) ───────────────────
-@app.patch("/api/products/{product_id}/image", response_model=Product, tags=["Produits"])
-@app.post( "/api/products/{product_id}/image", response_model=Product, tags=["Produits"])
 
 @app.patch("/api/products/{product_id}/image", response_model=Product, tags=["Produits"])
 @app.post( "/api/products/{product_id}/image", response_model=Product, tags=["Produits"])
 async def update_product_image(
     product_id: str,
     request: Request,
-    api_key: str = Depends(verify_api_key),
+    current: Annotated[TokenData, Depends(get_current_user_or_apikey)],
 ):
-    p = db.get_product(product_id)
-    if not p: raise HTTPException(404, "Produit introuvable")
+    p = db.get_product(current.company_id, product_id)
+    if not p:
+        raise HTTPException(404, "Produit introuvable")
     now = datetime.now().isoformat()
+    ctype = request.headers.get("content-type", "")
 
-    content_type = request.headers.get("content-type", "")
-
-    # ── CAS 1 : upload multipart/form-data (dashboard HTML) ──────────────
-    if "multipart/form-data" in content_type:
+    if "multipart/form-data" in ctype:
         form = await request.form()
         file: UploadFile = form.get("file")
         if not file:
             raise HTTPException(400, "Champ 'file' manquant")
-
-        # Détecter l'extension
-        ext = Path(file.filename).suffix.lower() if file.filename else ".jpg"
-        if ext not in {".jpg", ".jpeg", ".png", ".webp", ".gif"}:
-            ext = ".jpg"
-
-        filename = f"{product_id}{ext}"
-        dest = STATIC_DIR / filename
-        with dest.open("wb") as f:
-            shutil.copyfileobj(file.file, f)
-
-        image_url = f"/static/images/{filename}"
-        db.update_product_image(
+        image_url = save_product_image(
+            current.company_id,
             product_id,
-            image_url      = image_url,
-            ref_image_url  = p.get("reference_image_url"),
-            ref_image_hash = p.get("reference_image_hash"),
-            updated_at     = now,
+            file,
+            STATIC_DIR,
         )
-        return db.get_product(product_id)
+        db.update_product_image(
+            current.company_id, product_id,
+            image_url, p.get("reference_image_url"),
+            p.get("reference_image_hash"), now
+        )
+    else:
+        body = await request.json()
+        payload = ProductImageUpdate(**body)
+        db.update_product_image(
+            current.company_id, product_id,
+            payload.image_url or p.get("image_url"),
+            payload.reference_image_url  or p.get("reference_image_url"),
+            payload.reference_image_hash or p.get("reference_image_hash"),
+            now,
+        )
+    return _enrich(db.get_product(current.company_id, product_id), current.company_id)
 
-    # ── CAS 2 : JSON (Flutter ProductImageService) ────────────────────────
-    body = await request.json()
-    payload = ProductImageUpdate(**body)
-    db.update_product_image(
-        product_id,
-        image_url      = payload.image_url      or p.get("image_url"),
-        ref_image_url  = payload.reference_image_url  or p.get("reference_image_url"),
-        ref_image_hash = payload.reference_image_hash or p.get("reference_image_hash"),
-        updated_at     = now,
-    )
-    return db.get_product(product_id)
 
 # ════════════════════════════════════════════════════════════════════════════
-# VENTES  (API Key requise)
+# VENTES
 # ════════════════════════════════════════════════════════════════════════════
 
 @app.get("/api/sales", response_model=List[Sale], tags=["Ventes"])
-def list_sales(api_key: str = Depends(verify_api_key)):
-    return db.all_sales()
+def list_sales(current: Annotated[TokenData, Depends(get_current_user_or_apikey)]):
+    return db.all_sales(current.company_id)
+
 
 @app.get("/api/sales/{sale_id}", response_model=Sale, tags=["Ventes"])
-def get_sale(sale_id: str, api_key: str = Depends(verify_api_key)):
-    s = db.get_sale(sale_id)
-    if not s: raise HTTPException(404, "Vente introuvable")
+def get_sale(
+    sale_id: str,
+    current: Annotated[TokenData, Depends(get_current_user_or_apikey)],
+):
+    s = db.get_sale(current.company_id, sale_id)
+    if not s:
+        raise HTTPException(404, "Vente introuvable")
     return s
 
+
 @app.post("/api/sales", response_model=Sale, status_code=201, tags=["Ventes"])
-def create_sale(payload: SaleCreate, api_key: str = Depends(verify_api_key)):
-    total, items_validated = 0, []
+def create_sale(
+    payload: SaleCreate,
+    current: Annotated[TokenData, Depends(get_current_user_or_apikey)],
+):
+    check_subscription_active(current.company_id)
+    check_transaction_quota(current.company_id)
+    cid = current.company_id
+    total, items_ok = 0, []
     for item in payload.items:
-        p = db.get_product(item.product_id)
-        if not p: raise HTTPException(404, f"Produit {item.product_id} introuvable")
+        p = db.get_product(cid, item.product_id)
+        if not p:
+            raise HTTPException(404, f"Produit {item.product_id} introuvable")
         if p["stock"] < item.quantity:
             raise HTTPException(400, f"Stock insuffisant pour {p['name']}")
         sub = p["price"] * item.quantity
         total += sub
-        items_validated.append({
+        items_ok.append({
             "product_id": item.product_id, "product_name": p["name"],
             "quantity": item.quantity, "unit_price": p["price"], "subtotal": sub,
         })
-        db.update_stock(item.product_id, p["stock"] - item.quantity, datetime.now().isoformat())
+        db.update_stock(cid, item.product_id, p["stock"] - item.quantity, datetime.now().isoformat())
 
     sid = str(uuid.uuid4())
     now = datetime.now().isoformat()
     sale = {
         "id": sid,
         "reference": f"VTE-{datetime.now().strftime('%Y%m%d')}-{sid[:6].upper()}",
-        "source": "dashboard",
-        "items": items_validated, "total": total,
+        "source": payload.source or "dashboard",
+        "items": items_ok, "total": total,
         "customer": payload.customer, "note": payload.note,
         "created_at": now,
     }
-    db.insert_sale(sale)
+    db.insert_sale(cid, sale)
     return sale
 
 
@@ -272,83 +858,96 @@ def create_sale(payload: SaleCreate, api_key: str = Depends(verify_api_key)):
 # ════════════════════════════════════════════════════════════════════════════
 
 @app.post("/api/webhook/sale", tags=["Webhook"])
-def webhook_sale(payload: WebhookPayload, api_key: str = Depends(verify_api_key)):
+def webhook_sale(
+    payload: WebhookPayload,
+    current: Annotated[TokenData, Depends(get_current_user_or_apikey)],
+):
+    check_subscription_active(current.company_id)
+    cid = current.company_id
     errors, processed, items_enriched = [], [], []
     total_calc = 0
     for item in payload.items:
         p = None
-        if item.get("product_id"): p = db.get_product(item["product_id"])
-        if not p and item.get("sku"): p = db.get_product_by_sku(item["sku"])
+        if item.get("product_id"):
+            p = db.get_product(cid, item["product_id"])
+        if not p and item.get("sku"):
+            p = db.get_product_by_sku(cid, item["sku"])
         qty = item.get("quantity", 1)
         if p:
             sub = p["price"] * qty
             total_calc += sub
             items_enriched.append({
                 "product_id": p["id"], "product_name": p["name"],
-                "sku": p.get("sku",""), "quantity": qty,
+                "sku": p.get("sku", ""), "quantity": qty,
                 "unit_price": p["price"], "subtotal": sub,
             })
-            processed.append({"product_id": p["id"], "name": p["name"], "current_stock": p["stock"]})
+            processed.append({"product_id": p["id"], "name": p["name"],
+                               "current_stock": p["stock"]})
         else:
             errors.append(f"Produit non trouvé: {item.get('product_id') or item.get('sku')}")
             items_enriched.append(item)
 
-    sid = str(uuid.uuid4()); now = datetime.now().isoformat()
-    db.insert_sale({
+    sid = str(uuid.uuid4())
+    now = datetime.now().isoformat()
+    db.insert_sale(cid, {
         "id": sid,
         "reference": payload.sale_reference or f"WH-{sid[:8].upper()}",
         "source": "flutter_pos", "items": items_enriched,
         "total": total_calc if total_calc > 0 else (payload.total or 0),
         "customer": None, "note": None, "created_at": now,
     })
-    return {"success": len(errors)==0, "sale_id": sid,
+    return {"success": len(errors) == 0, "sale_id": sid,
             "processed": processed, "errors": errors, "timestamp": now}
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# CODES D'AUTHENTIFICATION  (API Key requise)
+# CODES D'AUTHENTICITÉ  (JWT requis)
 # ════════════════════════════════════════════════════════════════════════════
 
 def _make_code() -> str:
-    """Code unique XXXXX-XXXXX (10 chiffres faciles à taper)."""
     while True:
         d = ''.join(random.choices(string.digits, k=10))
-        code = f"{d[:5]}-{d[5:]}"
-        if not db.get_auth_code_by_value(code):
-            return code
+        return f"{d[:5]}-{d[5:]}"
+
 
 @app.post("/api/products/{product_id}/codes/generate",
           response_model=List[AuthCode], status_code=201, tags=["Codes Auth"])
-@app.post("/api/products/{product_id}/generate-codes",   # alias Flutter
+@app.post("/api/products/{product_id}/generate-codes",
           response_model=List[AuthCode], status_code=201, tags=["Codes Auth"],
           include_in_schema=False)
-def generate_codes(product_id: str, payload: GenerateCodesRequest,
-                   api_key: str = Depends(verify_api_key)):
-    """Génère N codes d'authentification pour un produit (max 500/appel)."""
-    if not db.get_product(product_id): raise HTTPException(404, "Produit introuvable")
-    now = datetime.now().isoformat()
-    created = []
+def generate_codes(
+    product_id: str,
+    payload: GenerateCodesRequest,
+    current: Annotated[TokenData, Depends(get_current_user_or_apikey)],
+):
+    cid = current.company_id
+    if not db.get_product(cid, product_id):
+        raise HTTPException(404, "Produit introuvable")
+    now, created = datetime.now().isoformat(), []
     for _ in range(payload.quantity):
-        entry = {"id": str(uuid.uuid4()), "product_id": product_id,
-                 "code": _make_code(), "status": "active", "created_at": now}
-        db.insert_auth_code(entry)
+        entry = {
+            "id": str(uuid.uuid4()), "product_id": product_id,
+            "code": _make_code(), "status": "active", "created_at": now,
+        }
+        db.insert_auth_code(cid, entry)
         created.append(entry)
     return created
 
+
 @app.get("/api/products/{product_id}/codes",
          response_model=List[AuthCode], tags=["Codes Auth"])
-def list_codes(product_id: str, api_key: str = Depends(verify_api_key)):
-    if not db.get_product(product_id): raise HTTPException(404, "Produit introuvable")
-    return db.get_codes_for_product(product_id)
-
-@app.get("/api/products/{product_id}/verifications", tags=["Codes Auth"])
-def product_verifications(product_id: str, api_key: str = Depends(verify_api_key)):
-    if not db.get_product(product_id): raise HTTPException(404, "Produit introuvable")
-    return db.get_verifications_for_product(product_id)
+def list_codes(
+    product_id: str,
+    current: Annotated[TokenData, Depends(get_current_user_or_apikey)],
+):
+    cid = current.company_id
+    if not db.get_product(cid, product_id):
+        raise HTTPException(404, "Produit introuvable")
+    return db.get_codes_for_product(cid, product_id)
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# VÉRIFICATION CLIENT FINAL  (PUBLIC — sans API Key)
+# VÉRIFICATION CLIENT FINAL  (PUBLIC — sans auth)
 # ════════════════════════════════════════════════════════════════════════════
 
 async def _reverse_geocode(lat: float, lon: float) -> dict:
@@ -357,13 +956,12 @@ async def _reverse_geocode(lat: float, lon: float) -> dict:
             r = await client.get(
                 "https://nominatim.openstreetmap.org/reverse",
                 params={"lat": lat, "lon": lon, "format": "json"},
-                headers={"User-Agent": "ERP-AuthVerifier/3.2"},
+                headers={"User-Agent": "ERP-TPE-QR/4.0"},
             )
             if r.status_code == 200:
                 addr = r.json().get("address", {})
                 return {
-                    "city": (addr.get("city") or addr.get("town") or
-                             addr.get("village") or addr.get("county") or ""),
+                    "city":    addr.get("city") or addr.get("town") or addr.get("village") or "",
                     "country": addr.get("country", ""),
                 }
     except Exception:
@@ -371,151 +969,160 @@ async def _reverse_geocode(lat: float, lon: float) -> dict:
     return {"city": None, "country": None}
 
 
-async def _do_verify(code_raw: str, latitude, longitude,
-                     request: Request) -> dict:
+async def _do_verify(code_raw: str, latitude, longitude, request: Request,
+                     company_id: str | None = None) -> dict:
     """
-    Logique centrale partagée par /api/verify et /api/public/verify.
-    Retourne un dict brut (compatible les deux formats).
+    Logique de vérification centrale.
+    Si company_id est fourni, cherche uniquement dans cette boutique.
+    Sinon, cherche dans toutes les boutiques (QR scanner public).
     """
     code = code_raw.strip().upper()
 
-    # ── Chercher par consumer_code (code numérique court imprimé sur emballage)
-    auth_code = db.get_auth_code_by_value(code)
-
-    # Si pas trouvé via auth_codes, chercher directement dans products.consumer_code
+    # Résolution company_id : chercher dans toutes les DBs tenant si non fourni
+    found_company = None
+    auth_code     = None
     product_from_consumer = None
-    if not auth_code:
-        product_from_consumer = db.get_product_by_consumer_code(code)
-        if not product_from_consumer:
-            return {
-                "valid": False, "already_used": False,
-                "product_name": None, "product_image": None, "product_image_url": None,
-                "message": "Code invalide. Vérifiez la saisie ou contactez le vendeur.",
-                "used_at": None,
-            }
 
-    # ── Via auth_codes (codes générés à la volée)
+    if company_id:
+        candidates = [company_id]
+    else:
+        # Lister toutes les bases tenant
+        from config import get_settings as _cfg
+        candidates = [
+            f.stem[4:]  # erp_{company_id}.db → company_id
+            for f in _cfg().DATA_DIR.glob("erp_*.db")
+        ]
+
+    for cid in candidates:
+        ac = db.get_auth_code_by_value(cid, code)
+        if ac:
+            auth_code      = ac
+            found_company  = cid
+            break
+        pfc = db.get_product_by_consumer_code(cid, code)
+        if pfc:
+            product_from_consumer = pfc
+            found_company         = cid
+            break
+
+    if not auth_code and not product_from_consumer:
+        return {
+            "valid": False, "already_used": False,
+            "product_name": None, "product_image": None,
+            "product_image_url": None, "product_description": None,
+            "message": "Code invalide. Vérifiez la saisie ou contactez le vendeur.",
+            "used_at": None,
+        }
+
     if auth_code:
-        product = db.get_product(auth_code["product_id"])
+        product = db.get_product(found_company, auth_code["product_id"])
         if auth_code["status"] == "used":
             return {
                 "valid": False, "already_used": True,
-                "product_name":      product["name"] if product else None,
-                "product_image":     product.get("image_url") if product else None,
-                "product_image_url": product.get("image_url") if product else None,
-                "message": "Ce code a déjà été utilisé. Si vous venez d'acheter ce produit, il est peut-être contrefait.",
+                "product_name":        product["name"] if product else None,
+                "product_image":       product.get("image_url") if product else None,
+                "product_image_url":   product.get("image_url") if product else None,
+                "product_description": product.get("description") if product else None,
+                "message": "Ce code a déjà été vérifié. Si vous venez d'acheter ce produit, il est peut-être contrefait.",
                 "used_at": None,
             }
-        if not product: raise HTTPException(500, "Produit introuvable en base")
-        code_id = auth_code["id"]
+        code_id    = auth_code["id"]
         product_id = auth_code["product_id"]
-        # Marquer comme utilisé
-        db.mark_code_used(code_id)
+        db.mark_code_used(found_company, code_id)
     else:
-        # ── Via consumer_code direct dans le produit
-        product = product_from_consumer
-        code_id = None
+        product    = product_from_consumer
+        code_id    = None
         product_id = product["id"]
 
-    # ── Géolocalisation
+    # Géolocalisation
     city = country = None
     if latitude is not None and longitude is not None:
         geo = await _reverse_geocode(latitude, longitude)
         city, country = geo["city"], geo["country"]
 
-    raw_ip = request.client.host if request.client else "unknown"
+    raw_ip  = request.client.host if request.client else "unknown"
     anon_ip = ".".join(raw_ip.split(".")[:3] + ["xxx"]) if "." in raw_ip else raw_ip
+    now     = datetime.now().isoformat()
 
-    now = datetime.now().isoformat()
-
-    # Enregistrer la vérification seulement si on a un code_id
     if code_id:
-        db.insert_verification({
-            "id": str(uuid.uuid4()),
-            "code_id":    code_id,
-            "product_id": product_id,
+        db.insert_verification(found_company, {
+            "id":          str(uuid.uuid4()),
+            "code_id":     code_id,
+            "product_id":  product_id,
             "verified_at": now,
-            "latitude": latitude, "longitude": longitude,
-            "city": city, "country": country,
-            "ip_address": anon_ip,
-            "user_agent": request.headers.get("user-agent", "")[:200],
+            "latitude":    latitude,
+            "longitude":   longitude,
+            "city":        city,
+            "country":     country,
+            "ip_address":  anon_ip,
+            "user_agent":  request.headers.get("user-agent", "")[:200],
         })
 
     return {
-        "valid": True,
-        "already_used": False,
+        "valid": True, "already_used": False,
         "product_name":        product["name"],
         "product_description": product.get("description"),
-        "product_image":       product.get("image_url"),      # format verify.html v1
-        "product_image_url":   product.get("image_url"),      # format verify.html v2
+        "product_image":       product.get("image_url"),
+        "product_image_url":   product.get("image_url"),
         "message": f"Produit authentique — {product['name']}",
-        "used_at": now,
+        "used_at":    now,
         "verified_at": now,
     }
 
 
-# ── /api/verify  — format attendu par le verify.html existant ────────────────
 @app.post("/api/verify", tags=["Client Final"])
 async def verify_v1(request: Request):
-    """
-    Endpoint public — format simplifié :
-    { "code": "XXXXX-XXXXX", "latitude": …, "longitude": … }
-    """
+    """Endpoint public — appelé par verify.html."""
+    _rl_verify.check(request)
     try:
         body = await request.json()
     except Exception:
         raise HTTPException(400, "JSON invalide")
     return await _do_verify(
-        body.get("code", ""),
-        body.get("latitude"),
-        body.get("longitude"),
-        request,
+        body.get("code", ""), body.get("latitude"), body.get("longitude"), request
     )
 
 
-# ── /api/public/verify — format Pydantic (nouveau dashboard) ─────────────────
 @app.post("/api/public/verify", response_model=VerifyResponse, tags=["Client Final"])
 async def verify_v2(payload: VerifyRequest, request: Request):
+    _rl_verify.check(request)
     lat = payload.latitude  if payload.consent else None
     lon = payload.longitude if payload.consent else None
     result = await _do_verify(payload.code, lat, lon, request)
-    return VerifyResponse(
-        valid=result["valid"],
-        already_used=result["already_used"],
-        product_name=result.get("product_name"),
-        product_description=result.get("product_description"),
-        product_image_url=result.get("product_image_url"),
-        message=result["message"],
-        verified_at=result.get("verified_at"),
-    )
+    return VerifyResponse(**result)
 
 
-# ── Aperçu avant validation (public) ─────────────────────────────────────────
 @app.get("/api/public/preview/{code}", tags=["Client Final"])
 def preview_code(code: str):
+    """Aperçu du produit avant vérification (ne consomme pas le code)."""
     clean = code.strip().upper()
-    ac = db.get_auth_code_by_value(clean)
-    if ac:
-        p = db.get_product(ac["product_id"])
-        return {"product_name": p["name"] if p else None,
-                "product_image_url": p.get("image_url") if p else None,
-                "code_status": ac["status"]}
-    p = db.get_product_by_consumer_code(clean)
-    if p:
-        return {"product_name": p["name"], "product_image_url": p.get("image_url"),
-                "code_status": "active"}
+    from config import get_settings as _cfg
+    for db_file in _cfg().DATA_DIR.glob("erp_*.db"):
+        cid = db_file.stem[4:]
+        ac  = db.get_auth_code_by_value(cid, clean)
+        if ac:
+            p = db.get_product(cid, ac["product_id"])
+            return {"product_name": p["name"] if p else None,
+                    "product_image_url": p.get("image_url") if p else None,
+                    "code_status": ac["status"]}
+        p = db.get_product_by_consumer_code(cid, clean)
+        if p:
+            return {"product_name": p["name"],
+                    "product_image_url": p.get("image_url"),
+                    "code_status": "active"}
     raise HTTPException(404, "Code introuvable")
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# STATS  (API Key requise)
+# STATS
 # ════════════════════════════════════════════════════════════════════════════
 
 @app.get("/api/stats", tags=["Stats"])
-def get_stats(api_key: str = Depends(verify_api_key)):
-    products = db.all_products()
-    sales    = db.all_sales()
-    verif    = db.get_verification_stats()
+def get_stats(current: Annotated[TokenData, Depends(get_current_user_or_apikey)]):
+    cid      = current.company_id
+    products = db.all_products(cid)
+    sales    = db.all_sales(cid)
+    verif    = db.get_verification_stats(cid)
     return {
         "total_products":  len(products),
         "total_sales":     len(sales),
@@ -525,45 +1132,36 @@ def get_stats(api_key: str = Depends(verify_api_key)):
         "verifications":   verif,
     }
 
-@app.get("/api/stats/verifications", tags=["Stats"])
-def verif_stats(api_key: str = Depends(verify_api_key)):
-    return db.get_verification_stats()
-
 @app.get("/api/verifications", tags=["Stats"])
-def all_verifications_route(api_key: str = Depends(verify_api_key)):
-    return db.all_verifications()
+def all_verifs(current: Annotated[TokenData, Depends(get_current_user_or_apikey)]):
+    return db.all_verifications(current.company_id)
 
-# Aliases utilisés dans certains frontends existants
+@app.get("/api/stats/verifications", tags=["Stats"])
+def verif_stats(current: Annotated[TokenData, Depends(get_current_user_or_apikey)]):
+    return db.get_verification_stats(current.company_id)
+
 @app.get("/api/authenticity/stats", tags=["Stats"], include_in_schema=False)
-def auth_stats(api_key: str = Depends(verify_api_key)):
-    with db.get_conn() as conn:
-        total_codes = conn.execute("SELECT COUNT(*) FROM auth_codes").fetchone()[0]
-        used_codes  = conn.execute("SELECT COUNT(*) FROM auth_codes WHERE status='used'").fetchone()[0]
-        total_verif = conn.execute("SELECT COUNT(*) FROM verifications").fetchone()[0]
-        # Tentatives suspectes = vérifications sur codes déjà utilisés (rejoués)
-        fake_attempts = conn.execute("""
-            SELECT COUNT(*) FROM verifications v
-            JOIN auth_codes a ON v.code_id = a.id
-            WHERE a.status = 'used'
-              AND v.verified_at != (
-                  SELECT MIN(verified_at) FROM verifications v2 WHERE v2.code_id = a.id
-              )
-        """).fetchone()[0]
-    return {
-        "total_codes":        total_codes,
-        "used_codes":         used_codes,
-        "total_verifications": total_verif,
-        "fake_attempts":      fake_attempts,
-    }
+def auth_stats_alias(current: Annotated[TokenData, Depends(get_current_user_or_apikey)]):
+    return db.auth_code_aggregate_stats(current.company_id)
+
 @app.get("/api/authenticity/logs", tags=["Stats"], include_in_schema=False)
-def auth_logs(api_key: str = Depends(verify_api_key)):
-    logs = db.all_verifications()
-    # Enrichir chaque log avec la valeur textuelle du code
-    for log in logs:
-        code_id = log.get("code_id")
-        if code_id:
-            auth_code = db.get_auth_code_by_id(code_id)   # ← voir note ci-dessous
-            log["code"] = auth_code["code"] if auth_code else code_id
-        else:
-            log["code"] = "—"
+def auth_logs_alias(current: Annotated[TokenData, Depends(get_current_user_or_apikey)]):
+    logs = db.all_verifications(current.company_id)
     return logs
+
+@app.get("/api/products/{product_id}/verifications", tags=["Stats"])
+def product_verifications(
+    product_id: str,
+    current: Annotated[TokenData, Depends(get_current_user_or_apikey)],
+):
+    cid = current.company_id
+    if not db.get_product(cid, product_id):
+        raise HTTPException(404, "Produit introuvable")
+    with db.get_conn(cid) as conn:
+        rows = conn.execute(
+            "SELECT v.*, a.code FROM verifications v "
+            "JOIN auth_codes a ON v.code_id=a.id "
+            "WHERE v.product_id=? ORDER BY v.verified_at DESC",
+            (product_id,)
+        ).fetchall()
+    return [dict(r) for r in rows]
