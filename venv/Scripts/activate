@@ -35,7 +35,7 @@ deactivate () {
 # unset irrelevant variables
 deactivate nondestructive
 
-VIRTUAL_ENV="C:\Users\Expedit\Desktop\erp-system\backend\venv"
+VIRTUAL_ENV="C:\Users\Expedit\Desktop\sell-tool-whith-qr-code\erp-system\backend\venv"
 export VIRTUAL_ENV
 
 _OLD_VIRTUAL_PATH="$PATH"
