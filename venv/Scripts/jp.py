@@ -1,4 +1,4 @@
-#!C:\Users\Expedit\Desktop\sell-tool-whith-qr-code\erp-system\backend\venv\Scripts\python.exe
+#!C:\Users\DI\Desktop\Saas-tpe\qr-sales-management-tpe\venv\Scripts\python.exe
 
 import sys
 import json
