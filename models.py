@@ -2,9 +2,16 @@
 models.py — v4.0
 Tous les modèles Pydantic : auth, billing, produits, ventes, codes auth
 """
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import Optional, List, Any, Dict
 import re
+
+
+def _validate_email_format(value: str) -> str:
+    normalized = value.strip().lower()
+    if not re.fullmatch(r"^[^@\s]+@[^@\s]+\.[^@\s]{2,}$", normalized):
+        raise ValueError("Adresse email invalide")
+    return normalized
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -15,11 +22,12 @@ class RegisterRequest(BaseModel):
     company_name: str = Field(..., min_length=2, max_length=100)
     email:        str = Field(..., min_length=5)
     password:     str = Field(..., min_length=8)
+    confirm_password: str = Field(..., min_length=8)
 
     @field_validator("email")
     @classmethod
     def email_lower(cls, v: str) -> str:
-        return v.strip().lower()
+        return _validate_email_format(v)
 
     @field_validator("password")
     @classmethod
@@ -30,15 +38,30 @@ class RegisterRequest(BaseModel):
             raise ValueError("Le mot de passe doit contenir au moins un chiffre")
         return v
 
+    @field_validator("confirm_password")
+    @classmethod
+    def confirm_not_empty(cls, v: str) -> str:
+        return v
+
 
 class LoginRequest(BaseModel):
-    email:    str
+    identifier: Optional[str] = None
+    email: Optional[str] = None
     password: str
 
-    @field_validator("email")
+    @field_validator("identifier", "email")
     @classmethod
-    def email_lower(cls, v: str) -> str:
+    def login_value_normalized(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
         return v.strip().lower()
+
+    @model_validator(mode="after")
+    def ensure_identifier(self):
+        self.identifier = (self.identifier or self.email or "").strip().lower()
+        if not self.identifier:
+            raise ValueError("Le matricule ou l'email est requis")
+        return self
 
 
 class TokenResponse(BaseModel):
@@ -64,7 +87,7 @@ class InviteRequest(BaseModel):
     @field_validator("email")
     @classmethod
     def email_lower(cls, v: str) -> str:
-        return v.strip().lower()
+        return _validate_email_format(v)
 
     @field_validator("role")
     @classmethod
@@ -77,6 +100,7 @@ class InviteRequest(BaseModel):
 class AcceptInviteRequest(BaseModel):
     token:    str
     password: str = Field(..., min_length=8)
+    confirm_password: str = Field(..., min_length=8)
 
     @field_validator("password")
     @classmethod
@@ -95,6 +119,37 @@ class UserOut(BaseModel):
     role:       str
     is_active:  int
     created_at: str
+    email_verified: int = 0
+
+
+class ActionResponse(BaseModel):
+    success: bool = True
+    message: str
+    preview: Optional[Dict[str, Any]] = None
+
+
+class EmailVerificationRequest(BaseModel):
+    token: str
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: str
+
+    @field_validator("email")
+    @classmethod
+    def forgot_email_lower(cls, v: str) -> str:
+        return _validate_email_format(v)
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    password: str = Field(..., min_length=8)
+    confirm_password: str = Field(..., min_length=8)
+
+
+class AdminResetPasswordRequest(BaseModel):
+    password: str = Field(..., min_length=8)
+    confirm_password: str = Field(..., min_length=8)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -249,10 +304,17 @@ class VerifyRequest(BaseModel):
 class VerifyResponse(BaseModel):
     valid:               bool
     already_used:        bool          = False
+    fraud_attempt:       bool          = False
     product_name:        Optional[str] = None
     product_description: Optional[str] = None
     product_image_url:   Optional[str] = None
     product_image:       Optional[str] = None  # alias legacy
+    company_name:        Optional[str] = None
+    company_email:       Optional[str] = None
+    company_status:      Optional[str] = None
+    verification_count:  int = 0
+    fraud_attempts:      int = 0
+    location_consent:    bool = False
     message:             str
     verified_at:         Optional[str] = None
     used_at:             Optional[str] = None  # alias legacy

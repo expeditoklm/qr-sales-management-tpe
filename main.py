@@ -14,14 +14,14 @@ Nouveautés v4 :
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 """
 
-import uuid, random, string, httpx, secrets
-from datetime import datetime, timezone
+import uuid, random, string, httpx, secrets, re
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Annotated, List
 
 from fastapi import (
     FastAPI, HTTPException, Depends, Request,
-    UploadFile, File, status
+    UploadFile, File, status, Query
 )
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, FileResponse
@@ -40,6 +40,7 @@ from auth import (
 from models import *
 from rate_limit import make_limiter
 from storage import save_product_image
+from email_utils import send_email
 from quota import (
     check_product_quota, check_user_quota,
     check_transaction_quota, check_subscription_active,
@@ -106,6 +107,100 @@ def _token_response_for_user(user: dict, company: dict | None = None) -> TokenRe
     )
 
 
+def _absolute_url(path: str) -> str:
+    base = cfg.PUBLIC_APP_BASE_URL.rstrip("/")
+    return f"{base}{path}"
+
+
+def _ensure_password_confirmation(password: str, confirm_password: str):
+    if password != confirm_password:
+        raise HTTPException(400, "Les mots de passe ne correspondent pas")
+
+
+def _resolve_login_user(identifier: str) -> dict | None:
+    value = identifier.strip().lower()
+    if not value:
+        return None
+    if "@" in value:
+        return db.get_user_by_email(value)
+    company = db.get_company_by_id_or_email(value)
+    if not company:
+        return None
+    return db.get_primary_user_for_company(company["id"])
+
+
+def _build_company_id(company_name: str) -> str:
+    base = re.sub(r"[^a-z0-9]+", "-", company_name.strip().lower()).strip("-")
+    base = base or "boutique"
+    candidate = base[:40]
+    suffix = 1
+    while db.get_company(candidate):
+        suffix += 1
+        candidate = f"{base[:32]}-{suffix}"
+    return candidate
+
+
+def _send_verification_email(user_id: str, email: str, company_name: str) -> dict:
+    token = secrets.token_urlsafe(32)
+    expires_at = (datetime.now(tz=timezone.utc) + timedelta(
+        hours=cfg.EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS
+    )).isoformat()
+    db.insert_email_verification_token({
+        "token": token,
+        "user_id": user_id,
+        "email": email,
+        "expires_at": expires_at,
+        "used": 0,
+    })
+    link = _absolute_url(f"/verify-email?token={token}")
+    return send_email(
+        to_email=email,
+        subject="Verification de votre email",
+        text=(
+            f"Bonjour,\n\n"
+            f"Confirmez l'email de votre boutique {company_name} : {link}\n\n"
+            f"Ce lien expire dans {cfg.EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS} heures."
+        ),
+        html=(
+            f"<p>Bonjour,</p>"
+            f"<p>Confirmez l'email de votre boutique <strong>{company_name}</strong> :</p>"
+            f"<p><a href=\"{link}\">{link}</a></p>"
+            f"<p>Ce lien expire dans {cfg.EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS} heures.</p>"
+        ),
+    )
+
+
+def _send_reset_password_email(user: dict) -> dict:
+    token = secrets.token_urlsafe(32)
+    expires_at = (datetime.now(tz=timezone.utc) + timedelta(
+        minutes=cfg.PASSWORD_RESET_TOKEN_EXPIRE_MINUTES
+    )).isoformat()
+    db.clear_password_reset_tokens_for_user(user["id"])
+    db.insert_password_reset_token({
+        "token": token,
+        "user_id": user["id"],
+        "email": user["email"],
+        "expires_at": expires_at,
+        "used": 0,
+    })
+    link = _absolute_url(f"/reset-password?token={token}")
+    return send_email(
+        to_email=user["email"],
+        subject="Reinitialisation de votre mot de passe",
+        text=(
+            f"Bonjour,\n\n"
+            f"Reinitialisez votre mot de passe ici : {link}\n\n"
+            f"Ce lien expire dans {cfg.PASSWORD_RESET_TOKEN_EXPIRE_MINUTES} minutes."
+        ),
+        html=(
+            f"<p>Bonjour,</p>"
+            f"<p>Reinitialisez votre mot de passe ici :</p>"
+            f"<p><a href=\"{link}\">{link}</a></p>"
+            f"<p>Ce lien expire dans {cfg.PASSWORD_RESET_TOKEN_EXPIRE_MINUTES} minutes.</p>"
+        ),
+    )
+
+
 # ════════════════════════════════════════════════════════════════════════════
 # PAGES HTML
 # ════════════════════════════════════════════════════════════════════════════
@@ -127,6 +222,26 @@ def page_superadmin():
 @app.get("/verify.html", response_class=HTMLResponse, include_in_schema=False)
 def page_verify():
     return HTMLResponse((FRONTEND_DIR / "verify.html").read_text(encoding="utf-8"))
+
+
+@app.get("/about", response_class=HTMLResponse, include_in_schema=False)
+def page_about():
+    return HTMLResponse((FRONTEND_DIR / "about.html").read_text(encoding="utf-8"))
+
+
+@app.get("/legal", response_class=HTMLResponse, include_in_schema=False)
+def page_legal():
+    return HTMLResponse((FRONTEND_DIR / "legal.html").read_text(encoding="utf-8"))
+
+
+@app.get("/terms", response_class=HTMLResponse, include_in_schema=False)
+def page_terms():
+    return HTMLResponse((FRONTEND_DIR / "terms.html").read_text(encoding="utf-8"))
+
+
+@app.get("/privacy", response_class=HTMLResponse, include_in_schema=False)
+def page_privacy():
+    return HTMLResponse((FRONTEND_DIR / "privacy.html").read_text(encoding="utf-8"))
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -171,6 +286,7 @@ def _ensure_superadmin():
         "password_hash": hash_password(cfg.SUPERADMIN_PASSWORD),
         "role":          "superadmin",
         "is_active":     1,
+        "email_verified": 1,
         "created_at":    now,
     })
     print(f"[AUTH] Super-admin créé : {cfg.SUPERADMIN_EMAIL}")
@@ -182,7 +298,7 @@ DEMO_COMPANY = {
     "id": "demo-shop",
     "name": "Boutique Demo",
     "email": "demo@tpe-qr.com",
-    "plan": "pro",
+    "plan": "free",
     "status": "active",
 }
 
@@ -226,6 +342,7 @@ def _ensure_demo_seed():
             "password_hash": hash_password(demo_user["password"]),
             "role":          demo_user["role"],
             "is_active":     1,
+            "email_verified": 1,
             "created_at":    now,
         })
 
@@ -249,11 +366,12 @@ _ensure_demo_seed()
 @app.post("/auth/register", response_model=TokenResponse, status_code=201, tags=["Auth"])
 def register(payload: RegisterRequest):
     """Inscription d'une nouvelle boutique + premier utilisateur admin."""
+    _ensure_password_confirmation(payload.password, payload.confirm_password)
     if db.get_company_by_email(payload.email):
         raise HTTPException(409, "Email déjà utilisé")
 
     now        = datetime.now(tz=timezone.utc).isoformat()
-    company_id = str(uuid.uuid4())
+    company_id = _build_company_id(payload.company_name)
     user_id    = str(uuid.uuid4())
     secret_key = _generate_company_secret_key()
 
@@ -273,6 +391,7 @@ def register(payload: RegisterRequest):
         "password_hash": hash_password(payload.password),
         "role":          "admin",
         "is_active":     1,
+        "email_verified": 0,
         "created_at":    now,
     })
     # Abonnement free par défaut
@@ -287,6 +406,10 @@ def register(payload: RegisterRequest):
         "stripe_customer_id":     None,
         "updated_at":             now,
     })
+
+    mail_result = _send_verification_email(user_id, payload.email, payload.company_name)
+    if not mail_result.get("sent") and mail_result.get("preview"):
+        print(f"[AUTH] Verification email preview: {mail_result['preview']}")
 
     return _token_response_for_user({
         "id": user_id,
@@ -304,9 +427,9 @@ async def login(payload: LoginRequest, request: Request):
     """Connexion — retourne un JWT access + refresh."""
     _rl_login.check(request)
 
-    user = db.get_user_by_email(payload.email)
+    user = _resolve_login_user(payload.identifier or "")
     if not user or not verify_password(payload.password, user["password_hash"]):
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Email ou mot de passe incorrect")
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Matricule, email ou mot de passe incorrect")
     if not user["is_active"]:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Compte désactivé")
     if user["company_status"] != "active":
@@ -314,6 +437,61 @@ async def login(payload: LoginRequest, request: Request):
 
     company = db.get_company(user["company_id"])
     return _token_response_for_user(user, company)
+
+
+@app.post("/auth/send-verification-email", response_model=ActionResponse, tags=["Auth"])
+def resend_verification_email(payload: ForgotPasswordRequest):
+    user = db.get_user_by_email(payload.email)
+    if not user:
+        return ActionResponse(message="Si l'adresse existe, un email de vérification sera envoyé.")
+    if int(user.get("email_verified", 0)) == 1:
+        return ActionResponse(message="Cette adresse email est déjà vérifiée.")
+    result = _send_verification_email(
+        user["id"],
+        user["email"],
+        user.get("company_name", "votre boutique"),
+    )
+    return ActionResponse(
+        message="Email de vérification préparé.",
+        preview=result.get("preview"),
+    )
+
+
+@app.post("/auth/verify-email", response_model=ActionResponse, tags=["Auth"])
+def verify_email(payload: EmailVerificationRequest):
+    row = db.get_email_verification_token(payload.token)
+    if not row:
+        raise HTTPException(400, "Lien de vérification invalide ou déjà utilisé")
+    if datetime.now(tz=timezone.utc).isoformat() > row["expires_at"]:
+        raise HTTPException(400, "Lien de vérification expiré")
+    db.set_user_email_verified(row["user_id"], 1)
+    db.mark_email_verification_token_used(payload.token)
+    return ActionResponse(message="Email vérifié avec succès.")
+
+
+@app.post("/auth/forgot-password", response_model=ActionResponse, tags=["Auth"])
+def forgot_password(payload: ForgotPasswordRequest):
+    user = db.get_user_by_email(payload.email)
+    if not user:
+        return ActionResponse(message="Si l'adresse existe, un email de réinitialisation sera envoyé.")
+    result = _send_reset_password_email(user)
+    return ActionResponse(
+        message="Email de réinitialisation préparé.",
+        preview=result.get("preview"),
+    )
+
+
+@app.post("/auth/reset-password", response_model=ActionResponse, tags=["Auth"])
+def reset_password(payload: ResetPasswordRequest):
+    _ensure_password_confirmation(payload.password, payload.confirm_password)
+    row = db.get_password_reset_token(payload.token)
+    if not row:
+        raise HTTPException(400, "Lien de réinitialisation invalide ou déjà utilisé")
+    if datetime.now(tz=timezone.utc).isoformat() > row["expires_at"]:
+        raise HTTPException(400, "Lien de réinitialisation expiré")
+    db.update_user_password(row["user_id"], hash_password(payload.password))
+    db.mark_password_reset_token_used(payload.token)
+    return ActionResponse(message="Mot de passe réinitialisé avec succès.")
 
 
 @app.post("/auth/refresh", response_model=TokenResponse, tags=["Auth"])
@@ -350,6 +528,7 @@ def invite_user(
 @app.post("/auth/accept-invite", response_model=TokenResponse, tags=["Auth"])
 def accept_invite(payload: AcceptInviteRequest):
     """L'employé définit son mot de passe via le token d'invitation."""
+    _ensure_password_confirmation(payload.password, payload.confirm_password)
     invite = db.get_invite(payload.token)
     if not invite:
         raise HTTPException(400, "Token invalide ou expiré")
@@ -368,6 +547,7 @@ def accept_invite(payload: AcceptInviteRequest):
         "password_hash": hash_password(payload.password),
         "role":          invite["role"],
         "is_active":     1,
+        "email_verified": 1,
         "created_at":    now,
     })
     db.mark_invite_used(payload.token)
@@ -653,6 +833,29 @@ def admin_stats(_: Annotated[TokenData, Depends(get_superadmin_user)]):
     return db.global_stats()
 
 
+@app.patch("/admin/companies/{company_id}/reset-password", tags=["Admin"])
+def admin_reset_company_password(
+    company_id: str,
+    payload: AdminResetPasswordRequest,
+    _: Annotated[TokenData, Depends(get_superadmin_user)],
+):
+    _ensure_password_confirmation(payload.password, payload.confirm_password)
+    company = db.get_company(company_id)
+    if not company:
+        raise HTTPException(404, "Boutique introuvable")
+    user = db.get_primary_user_for_company(company_id)
+    if not user:
+        raise HTTPException(404, "Aucun compte actif trouvé pour cette boutique")
+    db.update_user_password(user["id"], hash_password(payload.password))
+    db.clear_password_reset_tokens_for_user(user["id"])
+    return {
+        "message": f"Mot de passe réinitialisé pour {company.get('name') or company_id}",
+        "company_id": company_id,
+        "login_identifier": company_id,
+        "user_email": user.get("email"),
+    }
+
+
 # ════════════════════════════════════════════════════════════════════════════
 # PRODUITS  (JWT requis — company_id extrait du token)
 # ════════════════════════════════════════════════════════════════════════════
@@ -689,6 +892,9 @@ def create_product(
 ):
     check_subscription_active(current.company_id)
     check_product_quota(current.company_id)
+    existing = db.get_product_by_name(current.company_id, payload.name)
+    if existing:
+        raise HTTPException(409, "Un produit avec ce libellé existe déjà")
     now = datetime.now().isoformat()
     pid = str(uuid.uuid4())
     p = {
@@ -719,6 +925,10 @@ def update_product(
     if not p:
         raise HTTPException(404, "Produit introuvable")
     p.update({k: v for k, v in payload.model_dump(exclude_unset=True).items()})
+    if payload.name is not None:
+        existing = db.get_product_by_name(current.company_id, payload.name)
+        if existing and existing["id"] != product_id:
+            raise HTTPException(409, "Un produit avec ce libellé existe déjà")
     p["updated_at"] = datetime.now().isoformat()
     db.update_product_full(current.company_id, p)
     return _enrich(p, current.company_id)
@@ -801,8 +1011,35 @@ async def update_product_image(
 # ════════════════════════════════════════════════════════════════════════════
 
 @app.get("/api/sales", response_model=List[Sale], tags=["Ventes"])
-def list_sales(current: Annotated[TokenData, Depends(get_current_user_or_apikey)]):
-    return db.all_sales(current.company_id)
+def list_sales(
+    current: Annotated[TokenData, Depends(get_current_user_or_apikey)],
+    period: str = Query(default="all"),
+):
+    sales = db.all_sales(current.company_id)
+    if period == "all":
+        return sales
+
+    now = datetime.now()
+    if period == "daily":
+        filtered = [
+            sale for sale in sales
+            if datetime.fromisoformat(sale["created_at"]).date() == now.date()
+        ]
+    elif period == "weekly":
+        year, week, _ = now.isocalendar()
+        filtered = [
+            sale for sale in sales
+            if datetime.fromisoformat(sale["created_at"]).isocalendar()[:2] == (year, week)
+        ]
+    elif period == "monthly":
+        filtered = [
+            sale for sale in sales
+            if datetime.fromisoformat(sale["created_at"]).year == now.year
+            and datetime.fromisoformat(sale["created_at"]).month == now.month
+        ]
+    else:
+        raise HTTPException(400, "Le filtre doit être all, daily, weekly ou monthly")
+    return filtered
 
 
 @app.get("/api/sales/{sale_id}", response_model=Sale, tags=["Ventes"])
@@ -1008,43 +1245,22 @@ async def _do_verify(code_raw: str, latitude, longitude, request: Request,
     if not auth_code and not product_from_consumer:
         return {
             "valid": False, "already_used": False,
+            "fraud_attempt": False,
             "product_name": None, "product_image": None,
             "product_image_url": None, "product_description": None,
+            "company_name": None, "company_email": None, "company_status": None,
+            "verification_count": 0, "fraud_attempts": 0,
             "message": "Code invalide. Vérifiez la saisie ou contactez le vendeur.",
             "used_at": None,
+            "location_consent": latitude is not None and longitude is not None,
         }
 
-    if auth_code:
-        product = db.get_product(found_company, auth_code["product_id"])
-        if auth_code["status"] == "used":
-            return {
-                "valid": False, "already_used": True,
-                "product_name":        product["name"] if product else None,
-                "product_image":       product.get("image_url") if product else None,
-                "product_image_url":   product.get("image_url") if product else None,
-                "product_description": product.get("description") if product else None,
-                "message": "Ce code a déjà été vérifié. Si vous venez d'acheter ce produit, il est peut-être contrefait.",
-                "used_at": None,
-            }
-        code_id    = auth_code["id"]
-        product_id = auth_code["product_id"]
-        db.mark_code_used(found_company, code_id)
-    else:
-        product    = product_from_consumer
-        code_id    = None
-        product_id = product["id"]
-
-    # Géolocalisation
-    city = country = None
-    if latitude is not None and longitude is not None:
-        geo = await _reverse_geocode(latitude, longitude)
-        city, country = geo["city"], geo["country"]
-
+    company = db.get_company(found_company) if found_company else None
     raw_ip  = request.client.host if request.client else "unknown"
     anon_ip = ".".join(raw_ip.split(".")[:3] + ["xxx"]) if "." in raw_ip else raw_ip
     now     = datetime.now().isoformat()
 
-    if code_id:
+    def _insert_verification_log(*, code_id, product_id, attempt_type, is_valid, is_fraud, note):
         db.insert_verification(found_company, {
             "id":          str(uuid.uuid4()),
             "code_id":     code_id,
@@ -1056,17 +1272,90 @@ async def _do_verify(code_raw: str, latitude, longitude, request: Request,
             "country":     country,
             "ip_address":  anon_ip,
             "user_agent":  request.headers.get("user-agent", "")[:200],
+            "code_value":  code,
+            "attempt_type": attempt_type,
+            "is_valid":    1 if is_valid else 0,
+            "is_fraud":    1 if is_fraud else 0,
+            "note":        note,
         })
+
+    # Géolocalisation
+    city = country = None
+    if latitude is not None and longitude is not None:
+        geo = await _reverse_geocode(latitude, longitude)
+        city, country = geo["city"], geo["country"]
+
+    if auth_code:
+        product = db.get_product(found_company, auth_code["product_id"])
+        if auth_code["status"] == "used":
+            _insert_verification_log(
+                code_id=auth_code["id"],
+                product_id=auth_code["product_id"],
+                attempt_type="fraud_reuse",
+                is_valid=False,
+                is_fraud=True,
+                note="Code déjà consommé",
+            )
+            stats = db.auth_code_aggregate_stats(found_company)
+            verification_count = db.get_codes_for_product(found_company, auth_code["product_id"])
+            return {
+                "valid": False, "already_used": True,
+                "fraud_attempt": True,
+                "product_name":        product["name"] if product else None,
+                "product_image":       product.get("image_url") if product else None,
+                "product_image_url":   product.get("image_url") if product else None,
+                "product_description": product.get("description") if product else None,
+                "company_name": company.get("name") if company else None,
+                "company_email": company.get("email") if company else None,
+                "company_status": company.get("status") if company else None,
+                "verification_count": len(verification_count),
+                "fraud_attempts": stats.get("fake_attempts", 0),
+                "message": "Ce code a déjà été vérifié. Si vous venez d'acheter ce produit, il est peut-être contrefait.",
+                "used_at": auth_code.get("verified_at") or now,
+                "verified_at": now,
+                "location_consent": latitude is not None and longitude is not None,
+            }
+        code_id    = auth_code["id"]
+        product_id = auth_code["product_id"]
+        db.mark_code_used(found_company, code_id)
+    else:
+        product    = product_from_consumer
+        code_id    = None
+        product_id = product["id"]
+
+    if code_id:
+        _insert_verification_log(
+            code_id=code_id,
+            product_id=product_id,
+            attempt_type="valid",
+            is_valid=True,
+            is_fraud=False,
+            note="Vérification authentique",
+        )
+
+    stats = db.auth_code_aggregate_stats(found_company)
+    product_verifications = db.all_verifications(found_company)
+    same_product_attempts = [
+        row for row in product_verifications
+        if row.get("product_id") == product_id
+    ]
 
     return {
         "valid": True, "already_used": False,
+        "fraud_attempt": False,
         "product_name":        product["name"],
         "product_description": product.get("description"),
         "product_image":       product.get("image_url"),
         "product_image_url":   product.get("image_url"),
+        "company_name": company.get("name") if company else None,
+        "company_email": company.get("email") if company else None,
+        "company_status": company.get("status") if company else None,
+        "verification_count": len(same_product_attempts),
+        "fraud_attempts": stats.get("fake_attempts", 0),
         "message": f"Produit authentique — {product['name']}",
         "used_at":    now,
         "verified_at": now,
+        "location_consent": latitude is not None and longitude is not None,
     }
 
 
@@ -1078,8 +1367,12 @@ async def verify_v1(request: Request):
         body = await request.json()
     except Exception:
         raise HTTPException(400, "JSON invalide")
+    consent = bool(body.get("consent"))
     return await _do_verify(
-        body.get("code", ""), body.get("latitude"), body.get("longitude"), request
+        body.get("code", ""),
+        body.get("latitude") if consent else None,
+        body.get("longitude") if consent else None,
+        request,
     )
 
 
