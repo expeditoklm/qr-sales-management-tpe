@@ -49,6 +49,8 @@ class Settings:
     ACCESS_TOKEN_EXPIRE_MINUTES: int = _get_int("ACCESS_TOKEN_EXPIRE_MINUTES", 60)
     REFRESH_TOKEN_EXPIRE_DAYS: int = _get_int("REFRESH_TOKEN_EXPIRE_DAYS", 30)
     INVITE_TOKEN_EXPIRE_HOURS: int = _get_int("INVITE_TOKEN_EXPIRE_HOURS", 48)
+    EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS: int = _get_int("EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS", 48)
+    PASSWORD_RESET_TOKEN_EXPIRE_MINUTES: int = _get_int("PASSWORD_RESET_TOKEN_EXPIRE_MINUTES", 30)
 
     # Super-admin
     SUPERADMIN_EMAIL: str = _get("SUPERADMIN_EMAIL", "admin@tpe-qr.com")
@@ -103,3 +105,13 @@ class Settings:
     STORAGE_ACCESS_KEY_ID: str = _get("STORAGE_ACCESS_KEY_ID", "")
     STORAGE_SECRET_ACCESS_KEY: str = _get("STORAGE_SECRET_ACCESS_KEY", "")
     STORAGE_PUBLIC_BASE_URL: str = _get("STORAGE_PUBLIC_BASE_URL", "")
+
+    # Email
+    MAIL_ENABLED: bool = _get("MAIL_ENABLED", "false").lower() in ("1", "true", "yes", "on")
+    MAIL_HOST: str = _get("MAIL_HOST", "")
+    MAIL_PORT: int = _get_int("MAIL_PORT", 587)
+    MAIL_USERNAME: str = _get("MAIL_USERNAME", "")
+    MAIL_PASSWORD: str = _get("MAIL_PASSWORD", "")
+    MAIL_FROM: str = _get("MAIL_FROM", "no-reply@tpe-qr.local")
+    MAIL_USE_TLS: bool = _get("MAIL_USE_TLS", "true").lower() in ("1", "true", "yes", "on")
+    PUBLIC_APP_BASE_URL: str = _get("PUBLIC_APP_BASE_URL", "http://localhost:8000")

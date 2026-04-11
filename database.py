@@ -44,6 +44,7 @@ def init_shared_db():
                 password_hash TEXT NOT NULL,
                 role          TEXT NOT NULL DEFAULT 'employee',
                 is_active     INTEGER NOT NULL DEFAULT 1,
+                email_verified INTEGER NOT NULL DEFAULT 0,
                 created_at    TEXT NOT NULL,
                 FOREIGN KEY (company_id) REFERENCES companies(id)
             );
@@ -72,14 +73,38 @@ def init_shared_db():
                 expires_at  TEXT NOT NULL,
                 used        INTEGER NOT NULL DEFAULT 0
             );
+
+            CREATE TABLE IF NOT EXISTS email_verification_tokens (
+                token       TEXT PRIMARY KEY,
+                user_id      TEXT NOT NULL,
+                email        TEXT NOT NULL,
+                expires_at   TEXT NOT NULL,
+                used         INTEGER NOT NULL DEFAULT 0
+            );
+
+            CREATE TABLE IF NOT EXISTS password_reset_tokens (
+                token       TEXT PRIMARY KEY,
+                user_id     TEXT NOT NULL,
+                email       TEXT NOT NULL,
+                expires_at  TEXT NOT NULL,
+                used        INTEGER NOT NULL DEFAULT 0
+            );
         """)
-        columns = {
+        company_columns = {
             row["name"]
             for row in conn.execute("PRAGMA table_info(companies)").fetchall()
         }
-        if "secret_key" not in columns:
+        if "secret_key" not in company_columns:
             conn.execute(
                 "ALTER TABLE companies ADD COLUMN secret_key TEXT NOT NULL DEFAULT ''"
+            )
+        user_columns = {
+            row["name"]
+            for row in conn.execute("PRAGMA table_info(users)").fetchall()
+        }
+        if "email_verified" not in user_columns:
+            conn.execute(
+                "ALTER TABLE users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0"
             )
 
 
@@ -93,6 +118,14 @@ def get_company(company_id: str) -> dict | None:
 def get_company_by_email(email: str) -> dict | None:
     with _shared_conn() as conn:
         row = conn.execute("SELECT * FROM companies WHERE email=?", (email.lower(),)).fetchone()
+    return dict(row) if row else None
+
+def get_company_by_id_or_email(identifier: str) -> dict | None:
+    with _shared_conn() as conn:
+        row = conn.execute(
+            "SELECT * FROM companies WHERE lower(id)=? OR lower(email)=?",
+            (identifier.lower(), identifier.lower()),
+        ).fetchone()
     return dict(row) if row else None
 
 def get_company_by_secret_key(secret_key: str) -> dict | None:
@@ -159,8 +192,22 @@ def get_user_by_id(user_id: str) -> dict | None:
 def insert_user(u: dict):
     with _shared_conn() as conn:
         conn.execute(
-            "INSERT INTO users (id,company_id,email,password_hash,role,is_active,created_at) "
-            "VALUES (:id,:company_id,:email,:password_hash,:role,:is_active,:created_at)", u
+            "INSERT INTO users (id,company_id,email,password_hash,role,is_active,email_verified,created_at) "
+            "VALUES (:id,:company_id,:email,:password_hash,:role,:is_active,:email_verified,:created_at)", u
+        )
+
+def update_user_password(user_id: str, password_hash: str):
+    with _shared_conn() as conn:
+        conn.execute(
+            "UPDATE users SET password_hash=? WHERE id=?",
+            (password_hash, user_id),
+        )
+
+def set_user_email_verified(user_id: str, is_verified: int = 1):
+    with _shared_conn() as conn:
+        conn.execute(
+            "UPDATE users SET email_verified=? WHERE id=?",
+            (is_verified, user_id),
         )
 
 def list_users_for_company(company_id: str) -> list:
@@ -237,6 +284,76 @@ def get_invite(token: str) -> dict | None:
 def mark_invite_used(token: str):
     with _shared_conn() as conn:
         conn.execute("UPDATE invite_tokens SET used=1 WHERE token=?", (token,))
+
+def insert_email_verification_token(data: dict):
+    with _shared_conn() as conn:
+        conn.execute(
+            "INSERT INTO email_verification_tokens (token,user_id,email,expires_at,used) "
+            "VALUES (:token,:user_id,:email,:expires_at,:used)",
+            data,
+        )
+
+def get_email_verification_token(token: str) -> dict | None:
+    with _shared_conn() as conn:
+        row = conn.execute(
+            "SELECT * FROM email_verification_tokens WHERE token=? AND used=0",
+            (token,),
+        ).fetchone()
+    return dict(row) if row else None
+
+def get_primary_user_for_company(company_id: str) -> dict | None:
+    with _shared_conn() as conn:
+        row = conn.execute(
+            "SELECT u.*, c.name as company_name, c.status as company_status "
+            "FROM users u JOIN companies c ON u.company_id=c.id "
+            "WHERE u.company_id=? AND u.is_active=1 "
+            "ORDER BY CASE u.role "
+            "WHEN 'admin' THEN 0 "
+            "WHEN 'manager' THEN 1 "
+            "WHEN 'employee' THEN 2 "
+            "WHEN 'superadmin' THEN 3 "
+            "ELSE 9 END, u.created_at ASC "
+            "LIMIT 1",
+            (company_id,),
+        ).fetchone()
+    return dict(row) if row else None
+
+def mark_email_verification_token_used(token: str):
+    with _shared_conn() as conn:
+        conn.execute(
+            "UPDATE email_verification_tokens SET used=1 WHERE token=?",
+            (token,),
+        )
+
+def insert_password_reset_token(data: dict):
+    with _shared_conn() as conn:
+        conn.execute(
+            "INSERT INTO password_reset_tokens (token,user_id,email,expires_at,used) "
+            "VALUES (:token,:user_id,:email,:expires_at,:used)",
+            data,
+        )
+
+def get_password_reset_token(token: str) -> dict | None:
+    with _shared_conn() as conn:
+        row = conn.execute(
+            "SELECT * FROM password_reset_tokens WHERE token=? AND used=0",
+            (token,),
+        ).fetchone()
+    return dict(row) if row else None
+
+def mark_password_reset_token_used(token: str):
+    with _shared_conn() as conn:
+        conn.execute(
+            "UPDATE password_reset_tokens SET used=1 WHERE token=?",
+            (token,),
+        )
+
+def clear_password_reset_tokens_for_user(user_id: str):
+    with _shared_conn() as conn:
+        conn.execute(
+            "UPDATE password_reset_tokens SET used=1 WHERE user_id=?",
+            (user_id,),
+        )
 
 
 # ─── Super-admin global stats ─────────────────────────────────────────────────
@@ -322,7 +439,7 @@ def get_conn(company_id: str) -> sqlite3.Connection:
 
         CREATE TABLE IF NOT EXISTS verifications (
             id          TEXT PRIMARY KEY,
-            code_id     TEXT NOT NULL,
+            code_id     TEXT,
             product_id  TEXT NOT NULL,
             verified_at TEXT NOT NULL,
             latitude    REAL,
@@ -331,11 +448,30 @@ def get_conn(company_id: str) -> sqlite3.Connection:
             country     TEXT,
             ip_address  TEXT,
             user_agent  TEXT,
+            code_value  TEXT,
+            attempt_type TEXT NOT NULL DEFAULT 'valid',
+            is_valid    INTEGER NOT NULL DEFAULT 1,
+            is_fraud    INTEGER NOT NULL DEFAULT 0,
+            note        TEXT,
             FOREIGN KEY (code_id) REFERENCES auth_codes(id)
         );
         CREATE INDEX IF NOT EXISTS idx_verif_product ON verifications(product_id);
         CREATE INDEX IF NOT EXISTS idx_verif_code    ON verifications(code_id);
     """)
+    columns = {
+        row["name"]
+        for row in conn.execute("PRAGMA table_info(verifications)").fetchall()
+    }
+    if "code_value" not in columns:
+        conn.execute("ALTER TABLE verifications ADD COLUMN code_value TEXT")
+    if "attempt_type" not in columns:
+        conn.execute("ALTER TABLE verifications ADD COLUMN attempt_type TEXT NOT NULL DEFAULT 'valid'")
+    if "is_valid" not in columns:
+        conn.execute("ALTER TABLE verifications ADD COLUMN is_valid INTEGER NOT NULL DEFAULT 1")
+    if "is_fraud" not in columns:
+        conn.execute("ALTER TABLE verifications ADD COLUMN is_fraud INTEGER NOT NULL DEFAULT 0")
+    if "note" not in columns:
+        conn.execute("ALTER TABLE verifications ADD COLUMN note TEXT")
     return conn
 
 
@@ -384,7 +520,7 @@ def init_tenant_db(company_id: str):
 
             CREATE TABLE IF NOT EXISTS verifications (
                 id          TEXT PRIMARY KEY,
-                code_id     TEXT NOT NULL,
+                code_id     TEXT,
                 product_id  TEXT NOT NULL,
                 verified_at TEXT NOT NULL,
                 latitude    REAL,
@@ -393,11 +529,30 @@ def init_tenant_db(company_id: str):
                 country     TEXT,
                 ip_address  TEXT,
                 user_agent  TEXT,
+                code_value  TEXT,
+                attempt_type TEXT NOT NULL DEFAULT 'valid',
+                is_valid    INTEGER NOT NULL DEFAULT 1,
+                is_fraud    INTEGER NOT NULL DEFAULT 0,
+                note        TEXT,
                 FOREIGN KEY (code_id) REFERENCES auth_codes(id)
             );
             CREATE INDEX IF NOT EXISTS idx_verif_product ON verifications(product_id);
             CREATE INDEX IF NOT EXISTS idx_verif_code    ON verifications(code_id);
         """)
+        columns = {
+            row["name"]
+            for row in conn.execute("PRAGMA table_info(verifications)").fetchall()
+        }
+        if "code_value" not in columns:
+            conn.execute("ALTER TABLE verifications ADD COLUMN code_value TEXT")
+        if "attempt_type" not in columns:
+            conn.execute("ALTER TABLE verifications ADD COLUMN attempt_type TEXT NOT NULL DEFAULT 'valid'")
+        if "is_valid" not in columns:
+            conn.execute("ALTER TABLE verifications ADD COLUMN is_valid INTEGER NOT NULL DEFAULT 1")
+        if "is_fraud" not in columns:
+            conn.execute("ALTER TABLE verifications ADD COLUMN is_fraud INTEGER NOT NULL DEFAULT 0")
+        if "note" not in columns:
+            conn.execute("ALTER TABLE verifications ADD COLUMN note TEXT")
 
 
 # ─── Produits ─────────────────────────────────────────────────────────────────
@@ -430,6 +585,15 @@ def get_product_by_consumer_code(company_id: str, code: str) -> dict | None:
     with get_conn(company_id) as conn:
         row = conn.execute(
             "SELECT * FROM products WHERE consumer_code=?", (code,)
+        ).fetchone()
+    return dict(row) if row else None
+
+def get_product_by_name(company_id: str, name: str) -> dict | None:
+    normalized = name.strip().lower()
+    with get_conn(company_id) as conn:
+        row = conn.execute(
+            "SELECT * FROM products WHERE lower(trim(name))=?",
+            (normalized,),
         ).fetchone()
     return dict(row) if row else None
 
@@ -545,7 +709,8 @@ def mark_code_used(company_id: str, code_id: str):
 def get_codes_for_product(company_id: str, product_id: str) -> list:
     with get_conn(company_id) as conn:
         rows = conn.execute("""
-            SELECT a.*, v.verified_at, v.latitude, v.longitude, v.city, v.country
+            SELECT a.*, v.verified_at, v.latitude, v.longitude, v.city, v.country,
+                   v.is_fraud, v.attempt_type, v.note
             FROM auth_codes a
             LEFT JOIN verifications v ON v.code_id = a.id
             WHERE a.product_id=?
@@ -561,10 +726,12 @@ def insert_verification(company_id: str, v: dict):
         conn.execute("""
             INSERT INTO verifications
                 (id,code_id,product_id,verified_at,latitude,longitude,
-                 city,country,ip_address,user_agent)
+                 city,country,ip_address,user_agent,code_value,attempt_type,
+                 is_valid,is_fraud,note)
             VALUES
                 (:id,:code_id,:product_id,:verified_at,:latitude,:longitude,
-                 :city,:country,:ip_address,:user_agent)
+                 :city,:country,:ip_address,:user_agent,:code_value,:attempt_type,
+                 :is_valid,:is_fraud,:note)
         """, v)
 
 def all_verifications(company_id: str) -> list:
@@ -573,7 +740,7 @@ def all_verifications(company_id: str) -> list:
             SELECT v.*, p.name as product_name, a.code
             FROM verifications v
             JOIN products p ON v.product_id = p.id
-            JOIN auth_codes a ON v.code_id = a.id
+            LEFT JOIN auth_codes a ON v.code_id = a.id
             ORDER BY v.verified_at DESC
         """).fetchall()
     return [dict(r) for r in rows]
@@ -590,10 +757,14 @@ def get_verification_stats(company_id: str) -> dict:
             SELECT country, COUNT(*) as count FROM verifications
             WHERE country IS NOT NULL GROUP BY country ORDER BY count DESC
         """).fetchall()
+        fraud_attempts = conn.execute(
+            "SELECT COUNT(*) FROM verifications WHERE is_fraud=1"
+        ).fetchone()[0]
     return {
         "total": total,
         "by_product": [dict(r) for r in by_product],
         "by_country": [dict(r) for r in by_country],
+        "fraud_attempts": fraud_attempts,
     }
 
 def auth_code_aggregate_stats(company_id: str) -> dict:
@@ -601,14 +772,9 @@ def auth_code_aggregate_stats(company_id: str) -> dict:
         total_codes = conn.execute("SELECT COUNT(*) FROM auth_codes").fetchone()[0]
         used_codes  = conn.execute("SELECT COUNT(*) FROM auth_codes WHERE status='used'").fetchone()[0]
         total_verif = conn.execute("SELECT COUNT(*) FROM verifications").fetchone()[0]
-        fake = conn.execute("""
-            SELECT COUNT(*) FROM verifications v
-            JOIN auth_codes a ON v.code_id=a.id
-            WHERE a.status='used'
-              AND v.verified_at != (
-                  SELECT MIN(verified_at) FROM verifications v2 WHERE v2.code_id=a.id
-              )
-        """).fetchone()[0]
+        fake = conn.execute(
+            "SELECT COUNT(*) FROM verifications WHERE is_fraud=1"
+        ).fetchone()[0]
     return {"total_codes": total_codes, "used_codes": used_codes,
             "total_verifications": total_verif, "fake_attempts": fake}
 
