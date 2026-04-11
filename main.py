@@ -49,7 +49,7 @@ from quota import (
 cfg = get_settings()
 
 # ─── Paths ────────────────────────────────────────────────────────────────────
-FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
+FRONTEND_DIR = BASE_DIR / "frontend"
 STATIC_DIR   = Path(__file__).parent / "static"
 STATIC_DIR.mkdir(parents=True, exist_ok=True)
 (STATIC_DIR / "images").mkdir(exist_ok=True)
