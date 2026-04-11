@@ -1,0 +1,2107 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ERP — Système de Gestion</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link
+    href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700;800&display=swap"
+    rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #0d0f14;
+      --surface: #13161e;
+      --surface2: #1a1e2a;
+      --border: #252a38;
+      --accent: #4fffb0;
+      --accent2: #ff6b6b;
+      --accent3: #ffca3a;
+      --text: #e8eaf0;
+      --muted: #5a6278;
+      --font-head: 'Syne', sans-serif;
+      --font-mono: 'DM Mono', monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font-mono);
+      min-height: 100vh;
+    }
+
+    /* LAYOUT */
+    .shell {
+      display: flex;
+      min-height: 100vh;
+    }
+
+    .sidebar {
+      width: 220px;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      padding: 24px 0;
+      position: fixed;
+      top: 0;
+      left: 0;
+      height: 100vh;
+    }
+
+    .logo {
+      padding: 0 20px 28px;
+      font-family: var(--font-head);
+      font-weight: 800;
+      font-size: 1.15rem;
+      letter-spacing: -0.03em;
+      color: var(--accent);
+    }
+
+    .logo span {
+      color: var(--text);
+    }
+
+    .nav-item {
+      padding: 10px 20px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 0.78rem;
+      letter-spacing: 0.04em;
+      color: var(--muted);
+      transition: all .2s;
+      border-left: 2px solid transparent;
+    }
+
+    .nav-item:hover {
+      color: var(--text);
+      background: var(--surface2);
+    }
+
+    .nav-item.active {
+      color: var(--accent);
+      border-left-color: var(--accent);
+      background: #1a2a22;
+    }
+
+    .nav-icon {
+      width: 16px;
+      text-align: center;
+    }
+
+    .main {
+      margin-left: 220px;
+      flex: 1;
+      padding: 32px 36px;
+    }
+
+    /* TOPBAR */
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 32px;
+    }
+
+    .page-title {
+      font-family: var(--font-head);
+      font-size: 1.6rem;
+      font-weight: 800;
+      letter-spacing: -0.04em;
+    }
+
+    .api-badge {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      padding: 7px 14px;
+      border-radius: 6px;
+      font-size: 0.7rem;
+      color: var(--muted);
+    }
+
+    .dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 6px var(--accent);
+    }
+
+    .dot.red {
+      background: var(--accent2);
+      box-shadow: 0 0 6px var(--accent2);
+    }
+
+    /* CARDS */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      margin-bottom: 32px;
+    }
+
+    .stat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .stat-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 2px;
+    }
+
+    .stat-card.green::before {
+      background: var(--accent);
+    }
+
+    .stat-card.red::before {
+      background: var(--accent2);
+    }
+
+    .stat-card.yellow::before {
+      background: var(--accent3);
+    }
+
+    .stat-card.blue::before {
+      background: #5b9cf6;
+    }
+
+    .stat-label {
+      font-size: 0.68rem;
+      color: var(--muted);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+
+    .stat-value {
+      font-family: var(--font-head);
+      font-size: 1.8rem;
+      font-weight: 800;
+      letter-spacing: -0.04em;
+    }
+
+    .stat-value.green {
+      color: var(--accent);
+    }
+
+    .stat-value.red {
+      color: var(--accent2);
+    }
+
+    .stat-value.yellow {
+      color: var(--accent3);
+    }
+
+    .stat-value.blue {
+      color: #5b9cf6;
+    }
+
+    .stat-sub {
+      font-size: 0.68rem;
+      color: var(--muted);
+      margin-top: 4px;
+    }
+
+    /* TABLE */
+    .section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+      margin-bottom: 24px;
+    }
+
+    .section-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .section-title {
+      font-family: var(--font-head);
+      font-size: 0.85rem;
+      font-weight: 700;
+      letter-spacing: 0.01em;
+    }
+
+    .table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.75rem;
+    }
+
+    .table th {
+      padding: 10px 16px;
+      text-align: left;
+      color: var(--muted);
+      font-size: 0.65rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .table td {
+      padding: 11px 16px;
+      border-bottom: 1px solid #1a1e2a;
+    }
+
+    .table tr:last-child td {
+      border-bottom: none;
+    }
+
+    .table tr:hover td {
+      background: var(--surface2);
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 8px;
+      border-radius: 20px;
+      font-size: 0.65rem;
+      font-weight: 500;
+      letter-spacing: 0.04em;
+    }
+
+    .badge.ok {
+      background: #1a2a22;
+      color: var(--accent);
+    }
+
+    .badge.low {
+      background: #2a1a1a;
+      color: var(--accent2);
+    }
+
+    .badge.warn {
+      background: #2a2318;
+      color: var(--accent3);
+    }
+
+    .sku {
+      color: var(--muted);
+      font-size: 0.68rem;
+    }
+
+    /* BUTTONS */
+    .btn {
+      padding: 8px 16px;
+      border-radius: 6px;
+      border: none;
+      cursor: pointer;
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      letter-spacing: 0.03em;
+      transition: all .15s;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #0d0f14;
+      font-weight: 500;
+    }
+
+    .btn-primary:hover {
+      background: #5fffbc;
+      transform: translateY(-1px);
+    }
+
+    .btn-danger {
+      background: #2a1a1a;
+      color: var(--accent2);
+      border: 1px solid #3a2020;
+    }
+
+    .btn-danger:hover {
+      background: #3a2020;
+    }
+
+    .btn-ghost {
+      background: var(--surface2);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+
+    .btn-ghost:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    /* FORM / MODAL */
+    .overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, .7);
+      backdrop-filter: blur(4px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+    }
+
+    .overlay.show {
+      display: flex;
+    }
+
+    .modal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 28px;
+      width: 440px;
+      max-width: 95vw;
+    }
+
+    .modal-title {
+      font-family: var(--font-head);
+      font-size: 1rem;
+      font-weight: 700;
+      margin-bottom: 20px;
+    }
+
+    .field {
+      margin-bottom: 14px;
+    }
+
+    .field label {
+      display: block;
+      font-size: 0.68rem;
+      color: var(--muted);
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      margin-bottom: 5px;
+    }
+
+    .field input,
+    .field textarea,
+    .field select {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 9px 12px;
+      color: var(--text);
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      outline: none;
+      transition: border .15s;
+    }
+
+    .field input:focus,
+    .field textarea:focus {
+      border-color: var(--accent);
+    }
+
+    .field-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .modal-actions {
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+      margin-top: 20px;
+    }
+
+    /* WEBHOOK LOG */
+    .log-entry {
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.72rem;
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+    }
+
+    .log-time {
+      color: var(--muted);
+      min-width: 80px;
+    }
+
+    .log-ok {
+      color: var(--accent);
+    }
+
+    .log-err {
+      color: var(--accent2);
+    }
+
+    .log-detail {
+      color: var(--text);
+      flex: 1;
+    }
+
+    /* CONFIG BOX */
+    .config-box {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px 20px;
+      margin-bottom: 20px;
+    }
+
+    .config-row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .config-row input {
+      flex: 1;
+    }
+
+    /* TOAST */
+    .toast-container {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      z-index: 999;
+    }
+
+    .toast {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      padding: 10px 16px;
+      border-radius: 8px;
+      font-size: 0.75rem;
+      max-width: 300px;
+      animation: slideIn .2s ease;
+    }
+
+    .toast.ok {
+      border-left: 3px solid var(--accent);
+    }
+
+    .toast.err {
+      border-left: 3px solid var(--accent2);
+    }
+
+    @keyframes slideIn {
+      from {
+        transform: translateX(20px);
+        opacity: 0;
+      }
+
+      to {
+        transform: translateX(0);
+        opacity: 1;
+      }
+    }
+
+    /* SEARCH */
+    .search-bar {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 8px 12px;
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      color: var(--text);
+      outline: none;
+      width: 220px;
+    }
+
+    .search-bar:focus {
+      border-color: var(--accent);
+    }
+
+    .empty {
+      padding: 32px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.78rem;
+    }
+
+    .loading {
+      padding: 32px;
+      text-align: center;
+      color: var(--muted);
+    }
+
+    /* WEBHOOK TEST PANEL */
+    .webhook-panel {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+
+    .code-block {
+      background: #0a0c10;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 14px;
+      font-size: 0.7rem;
+      color: #a8d8b9;
+      overflow-x: auto;
+      white-space: pre;
+      line-height: 1.6;
+      margin: 10px 0;
+    }
+
+    .auth-screen {
+      position: fixed;
+      inset: 0;
+      z-index: 50;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      background:
+        radial-gradient(circle at top left, rgba(79, 255, 176, 0.16), transparent 30%),
+        radial-gradient(circle at bottom right, rgba(91, 156, 246, 0.14), transparent 28%),
+        rgba(10, 12, 18, 0.95);
+      backdrop-filter: blur(18px);
+    }
+
+    .auth-screen.hidden {
+      display: none;
+    }
+
+    .auth-shell-hidden .shell {
+      display: none;
+    }
+
+    .auth-panel {
+      width: min(980px, 100%);
+      display: grid;
+      grid-template-columns: 1.05fr 0.95fr;
+      background: rgba(19, 22, 30, 0.98);
+      border: 1px solid rgba(79, 255, 176, 0.18);
+      border-radius: 22px;
+      overflow: hidden;
+      box-shadow: 0 32px 70px rgba(0, 0, 0, 0.45);
+    }
+
+    .auth-copy {
+      padding: 42px;
+      background:
+        linear-gradient(160deg, rgba(79, 255, 176, 0.08), transparent 52%),
+        linear-gradient(180deg, rgba(255, 202, 58, 0.08), transparent 100%);
+      border-right: 1px solid var(--border);
+    }
+
+    .auth-kicker {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 12px;
+      border: 1px solid rgba(79, 255, 176, 0.2);
+      border-radius: 999px;
+      color: var(--accent);
+      font-size: 0.72rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 18px;
+    }
+
+    .auth-title {
+      font-family: var(--font-head);
+      font-size: clamp(2rem, 3vw, 3.2rem);
+      line-height: 0.95;
+      letter-spacing: -0.06em;
+      margin-bottom: 18px;
+    }
+
+    .auth-text {
+      color: #b2b8c8;
+      line-height: 1.7;
+      font-size: 0.92rem;
+      max-width: 36ch;
+    }
+
+    .auth-points {
+      margin-top: 28px;
+      display: grid;
+      gap: 12px;
+    }
+
+    .auth-point {
+      padding: 14px 16px;
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      color: #cfd5e3;
+      font-size: 0.82rem;
+      line-height: 1.6;
+    }
+
+    .auth-form-wrap {
+      padding: 42px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .auth-form {
+      width: min(360px, 100%);
+    }
+
+    .auth-form h2 {
+      font-family: var(--font-head);
+      font-size: 1.7rem;
+      letter-spacing: -0.05em;
+      margin-bottom: 10px;
+    }
+
+    .auth-form p {
+      color: var(--muted);
+      font-size: 0.8rem;
+      line-height: 1.6;
+      margin-bottom: 20px;
+    }
+
+    .auth-form .field {
+      margin-bottom: 14px;
+    }
+
+    .auth-form .field label {
+      display: block;
+      margin-bottom: 7px;
+      color: #b6bfd3;
+      font-size: 0.72rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .auth-form .field input {
+      width: 100%;
+      background: #0f131c;
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 12px;
+      padding: 13px 14px;
+      font-family: var(--font-mono);
+      font-size: 0.88rem;
+      outline: none;
+    }
+
+    .auth-form .field input:focus {
+      border-color: rgba(79, 255, 176, 0.55);
+      box-shadow: 0 0 0 3px rgba(79, 255, 176, 0.08);
+    }
+
+    .auth-actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 18px;
+    }
+
+    .auth-inline {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 10px;
+      flex-wrap: wrap;
+    }
+
+    .auth-switch {
+      color: var(--accent);
+      cursor: pointer;
+      font-size: 0.78rem;
+    }
+
+    .auth-legal {
+      color: #9ba6bd;
+      font-size: 0.7rem;
+      line-height: 1.7;
+      margin-top: 18px;
+    }
+
+    .password-row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .password-row input {
+      flex: 1;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    .auth-error {
+      min-height: 18px;
+      margin-top: 12px;
+      color: #ff8b8b;
+      font-size: 0.76rem;
+      line-height: 1.5;
+    }
+
+    .session-card {
+      margin: 8px 20px 18px;
+      padding: 14px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.03);
+      display: none;
+    }
+
+    .session-card.show {
+      display: block;
+    }
+
+    .session-label {
+      color: var(--muted);
+      font-size: 0.65rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 5px;
+    }
+
+    .session-value {
+      color: var(--text);
+      font-size: 0.8rem;
+      line-height: 1.5;
+      word-break: break-word;
+    }
+
+    .session-meta {
+      color: #9ba6bd;
+      font-size: 0.72rem;
+      margin-top: 8px;
+    }
+
+    .session-actions {
+      margin-top: 12px;
+      display: flex;
+      gap: 8px;
+    }
+
+    @media (max-width: 860px) {
+      .auth-panel {
+        grid-template-columns: 1fr;
+      }
+
+      .auth-copy {
+        border-right: 0;
+        border-bottom: 1px solid var(--border);
+      }
+    }
+  </style>
+</head>
+
+<body class="auth-shell-hidden">
+  <div class="auth-screen" id="auth-screen">
+    <div class="auth-panel">
+      <div class="auth-copy">
+        <div class="logo" style="padding:0;margin-bottom:18px">ERP<span>·SYS</span></div>
+        <div class="auth-kicker">Acces securise</div>
+        <div class="auth-title">Connecte ton espace web avec le meme compte que sur mobile.</div>
+        <div class="auth-text">
+          Le dashboard web utilise maintenant les endpoints JWT du backend. Les identifiants qui
+          fonctionnent dans l'APK mobile fonctionnent aussi ici.
+        </div>
+        <div class="auth-points">
+          <div class="auth-point">Utilise le meme matricule boutique et le meme mot de passe que dans ton application mobile.</div>
+          <div class="auth-point">La session web se renouvelle automatiquement avec le refresh token quand c'est possible.</div>
+        <div class="auth-point">Le dashboard web ouvre une session JWT stockee en sessionStorage pour rester coherente avec le backend.</div>
+        </div>
+      </div>
+      <div class="auth-form-wrap">
+        <form class="auth-form" id="login-form">
+          <h2 id="auth-title">Connexion</h2>
+          <p id="auth-subtitle">Entre les identifiants de ta boutique pour ouvrir le dashboard web.</p>
+          <div class="auth-inline">
+            <span class="auth-switch" onclick="setAuthMode(authMode === 'login' ? 'register' : 'login')">
+              <span id="auth-switch-label">Créer un compte</span>
+            </span>
+          </div>
+          <div class="field hidden" id="register-company-field">
+            <label for="register-company">Nom de la boutique</label>
+            <input id="register-company" type="text" autocomplete="organization" placeholder="Nom de la boutique" />
+          </div>
+          <div class="field">
+            <label for="login-email" id="login-identifier-label">Matricule boutique</label>
+            <input id="login-email" type="text" autocomplete="username" placeholder="demo-shop" />
+          </div>
+          <div class="field">
+            <label for="login-password">Mot de passe</label>
+            <div class="password-row">
+              <input id="login-password" type="password" autocomplete="current-password" placeholder="Mot de passe" />
+              <button class="btn btn-ghost" type="button" onclick="togglePassword('login-password', this)">Voir</button>
+            </div>
+          </div>
+          <div class="field hidden" id="register-confirm-field">
+            <label for="register-confirm-password">Confirmer le mot de passe</label>
+            <div class="password-row">
+              <input id="register-confirm-password" type="password" autocomplete="new-password" placeholder="Confirmer le mot de passe" />
+              <button class="btn btn-ghost" type="button" onclick="togglePassword('register-confirm-password', this)">Voir</button>
+            </div>
+          </div>
+          <div class="auth-actions">
+            <button class="btn btn-primary" type="submit" id="login-submit">Se connecter</button>
+            <button class="btn btn-ghost" type="button" onclick="prefillDemoAdmin()">Compte demo</button>
+          </div>
+          <div class="auth-error" id="login-error"></div>
+          <div class="auth-legal">
+            En continuant, vous acceptez les mentions légales, la politique d'utilisation et la politique de confidentialité.
+            Lors d'une vérification d'authenticité, la localisation n'est collectée qu'avec consentement explicite et sert à la sécurité, à la traçabilité et aux statistiques antifraude.
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+  <div class="shell">
+    <!-- SIDEBAR -->
+    <aside class="sidebar">
+      <div class="logo">ERP<span>·SYS</span></div>
+      <div class="session-card" id="session-card">
+        <div class="session-label">Session active</div>
+        <div class="session-value" id="session-user">Non connecte</div>
+        <div class="session-meta" id="session-company">Aucune boutique</div>
+        <div class="session-actions">
+          <button class="btn btn-ghost" type="button" onclick="logout()" style="width:100%">Deconnexion</button>
+        </div>
+      </div>
+      <div class="nav-item active" onclick="showPage('dashboard')" id="nav-dashboard">
+        <span class="nav-icon">▦</span> Dashboard
+      </div>
+      <div class="nav-item" onclick="showPage('products')" id="nav-products">
+        <span class="nav-icon">⊞</span> Produits
+      </div>
+      <div class="nav-item" onclick="showPage('sales')" id="nav-sales">
+        <span class="nav-icon">↗</span> Ventes
+      </div>
+      <div class="nav-item" onclick="showPage('webhook')" id="nav-webhook">
+        <span class="nav-icon">⚡</span> Webhook
+      </div>
+      <div class="nav-item" onclick="showPage('authenticity')" id="nav-authenticity">
+        <span class="nav-icon">⬡</span> Authenticité
+      </div>
+      <div class="nav-item" onclick="showPage('config')" id="nav-config">
+        <span class="nav-icon">⚙</span> Config API
+      </div>
+    </aside>
+
+    <!-- MAIN -->
+    <main class="main">
+      <!-- DASHBOARD -->
+      <div id="page-dashboard">
+        <div class="topbar">
+          <div class="page-title">Dashboard</div>
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+            <button class="btn btn-ghost" type="button" onclick="logout()">Déconnexion</button>
+          <div class="api-badge">
+            <div class="dot" id="api-status-dot"></div><span id="api-status-text">Connexion…</span>
+          </div>
+          </div>
+        </div>
+        <div class="stats-grid">
+          <div class="stat-card green">
+            <div class="stat-label">Chiffre d'affaires</div>
+            <div class="stat-value green" id="stat-revenue">—</div>
+            <div class="stat-sub">Total cumulé</div>
+          </div>
+          <div class="stat-card blue">
+            <div class="stat-label">Ventes</div>
+            <div class="stat-value blue" id="stat-sales">—</div>
+            <div class="stat-sub">Transactions</div>
+          </div>
+          <div class="stat-card yellow">
+            <div class="stat-label">Produits</div>
+            <div class="stat-value yellow" id="stat-products">—</div>
+            <div class="stat-sub">Références actives</div>
+          </div>
+          <div class="stat-card red">
+            <div class="stat-label">Stock faible</div>
+            <div class="stat-value red" id="stat-lowstock">—</div>
+            <div class="stat-sub">Alertes</div>
+          </div>
+        </div>
+        <div class="section">
+          <div class="section-header">
+            <div class="section-title">⚠ Alertes stock faible</div>
+          </div>
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Produit</th>
+                <th>SKU</th>
+                <th>Stock</th>
+                <th>Prix</th>
+              </tr>
+            </thead>
+            <tbody id="low-stock-tbody">
+              <tr>
+                <td colspan="4" class="loading">Chargement…</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="section">
+          <div class="section-header">
+            <div class="section-title">↗ Dernières ventes</div>
+          </div>
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Référence</th>
+                <th>Produit(s)</th>
+                <th>Qté</th>
+                <th>Prix unit.</th>
+                <th>Total</th>
+                <th>Source</th>
+                <th>Date</th>
+              </tr>
+            </thead>
+            <tbody id="recent-sales-tbody">
+              <tr>
+                <td colspan="5" class="loading">Chargement…</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- PRODUCTS -->
+      <div id="page-products" style="display:none">
+        <div class="topbar">
+          <div class="page-title">Produits</div>
+          <div style="display:flex;gap:10px;align-items:center">
+            <input class="search-bar" placeholder="Rechercher…" oninput="filterProducts(this.value)" />
+            <button class="btn btn-primary" onclick="openProductModal()">+ Ajouter</button>
+          </div>
+        </div>
+        <div class="section">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Nom</th>
+                <th>SKU</th>
+                <th>Prix (FCFA)</th>
+                <th>Stock</th>
+                <th>Statut</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="products-tbody">
+              <tr>
+                <td colspan="6" class="loading">Chargement…</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- SALES -->
+      <div id="page-sales" style="display:none">
+        <div class="topbar">
+          <div class="page-title">Ventes</div>
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+            <select id="sales-period-filter" class="search-bar" onchange="loadSales()">
+              <option value="all">Toutes les ventes</option>
+              <option value="daily">Journalières</option>
+              <option value="weekly">Hebdomadaires</option>
+              <option value="monthly">Mensuelles</option>
+            </select>
+            <button class="btn btn-primary" onclick="openSaleModal()">+ Nouvelle vente</button>
+          </div>
+        </div>
+        <div class="section">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Référence</th>
+                <th>Produit</th>
+                <th>Qté</th>
+                <th>Prix unit.</th>
+                <th>Sous-total</th>
+                <th>Total vente</th>
+                <th>Source</th>
+                <th>Date</th>
+              </tr>
+            </thead>
+            <tbody id="sales-tbody">
+              <tr>
+                <td colspan="6" class="loading">Chargement…</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- WEBHOOK -->
+      <div id="page-webhook" style="display:none">
+        <div class="topbar">
+          <div class="page-title">Webhook Flutter POS</div>
+        </div>
+        <div class="webhook-panel">
+          <div class="section-title" style="margin-bottom:12px">📡 Endpoint de réception</div>
+          <div class="config-row">
+            <input class="field"
+              style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:9px 12px;color:var(--accent);font-family:var(--font-mono);font-size:0.8rem"
+              readonly id="webhook-url" value="" />
+            <button class="btn btn-ghost" onclick="copyWebhook()">Copier</button>
+          </div>
+          <div style="margin-top:16px;font-size:0.72rem;color:var(--muted)">Format JSON attendu :</div>
+          <div class="code-block">{
+            "sale_reference": "VTE-20240615-ABC123",
+            "total": 4500,
+            "company_id": "boutique_01",
+            "items": [
+            { "product_id": "uuid-...", "sku": "SKU-001", "quantity": 2 },
+            { "product_id": "uuid-...", "sku": "SKU-003", "quantity": 1 }
+            ]
+            }</div>
+          <div style="font-size:0.72rem;color:var(--muted);margin-top:4px">Header requis : <span
+              style="color:var(--accent3)">Authorization: Bearer &lt;jwt&gt;</span></div>
+        </div>
+        <div class="section">
+          <div class="section-header">
+            <div class="section-title">📋 Tester le webhook</div>
+          </div>
+          <div style="padding:16px">
+            <div class="field-row" style="margin-bottom:12px">
+              <div class="field">
+                <label>Référence vente</label>
+                <input id="wh-ref" value="TEST-001" />
+              </div>
+              <div class="field">
+                <label>Total (FCFA)</label>
+                <input id="wh-total" type="number" value="4500" />
+              </div>
+            </div>
+            <div class="field" style="margin-bottom:12px">
+              <label>Sélectionner un produit</label>
+              <select id="wh-product"
+                style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:9px 12px;color:var(--text);font-family:var(--font-mono);font-size:0.8rem">
+                <option value="">— Choisir un produit —</option>
+              </select>
+            </div>
+            <div class="field" style="margin-bottom:16px">
+              <label>Quantité</label>
+              <input id="wh-qty" type="number" value="1" min="1" style="width:100px" />
+            </div>
+            <button class="btn btn-primary" onclick="testWebhook()">⚡ Envoyer webhook test</button>
+          </div>
+        </div>
+        <div class="section">
+          <div class="section-header">
+            <div class="section-title">📜 Journal webhook</div><button class="btn btn-ghost"
+              onclick="webhookLog=[];renderLog()">Vider</button>
+          </div>
+          <div id="webhook-log-container">
+            <div class="empty">Aucun appel encore</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- AUTHENTICITÉ -->
+      <div id="page-authenticity" style="display:none">
+        <div class="topbar">
+          <div class="page-title">Codes d'Authenticité</div>
+          <a href="/verify" target="_blank" class="btn btn-ghost" style="text-decoration:none">↗ Page client</a>
+        </div>
+
+        <div class="stats-grid">
+          <div class="stat-card green">
+            <div class="stat-label">Codes générés</div>
+            <div class="stat-value green" id="auth-total">—</div>
+            <div class="stat-sub">Total</div>
+          </div>
+          <div class="stat-card blue">
+            <div class="stat-label">Codes utilisés</div>
+            <div class="stat-value blue" id="auth-used">—</div>
+            <div class="stat-sub">Vérifiés 1×</div>
+          </div>
+          <div class="stat-card yellow">
+            <div class="stat-label">Vérifications</div>
+            <div class="stat-value yellow" id="auth-verif">—</div>
+            <div class="stat-sub">Total scans</div>
+          </div>
+          <div class="stat-card red">
+            <div class="stat-label">Tentatives suspectes</div>
+            <div class="stat-value red" id="auth-fake">—</div>
+            <div class="stat-sub">Codes invalides / replay</div>
+          </div>
+        </div>
+
+        <!-- Génération -->
+        <div class="section" style="margin-bottom:24px">
+          <div class="section-header">
+            <div class="section-title">⊞ Générer des codes pour un produit</div>
+          </div>
+          <div style="padding:16px 20px;display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
+            <div class="field" style="flex:1;min-width:180px;margin-bottom:0">
+              <label>Produit</label>
+              <select id="auth-gen-product"
+                style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:9px 12px;color:var(--text);font-family:var(--font-mono);font-size:0.78rem">
+                <option value="">— Choisir —</option>
+              </select>
+            </div>
+            <div class="field" style="width:110px;margin-bottom:0">
+              <label>Quantité</label>
+              <input id="auth-gen-qty" type="number" value="10" min="1" max="500"
+                style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:9px 12px;color:var(--text);font-family:var(--font-mono);font-size:0.78rem" />
+            </div>
+            <button class="btn btn-primary" onclick="generateAuthCodes()" style="margin-bottom:0">Générer</button>
+          </div>
+
+          <div id="auth-gen-result" style="display:none;padding:0 20px 20px">
+            <div style="font-size:0.72rem;color:var(--muted);margin-bottom:10px">Codes à coller/imprimer sur vos
+              produits :</div>
+            <div id="auth-codes-grid" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px"></div>
+            <div style="display:flex;gap:8px">
+              <button class="btn btn-ghost" onclick="copyAllAuthCodes()">Copier tout</button>
+              <button class="btn btn-ghost" onclick="printAuthCodes()">Imprimer</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Codes par produit -->
+        <div class="section" style="margin-bottom:24px">
+          <div class="section-header">
+            <div class="section-title">📋 Codes par produit</div>
+            <select id="auth-view-product" onchange="loadProductAuthCodes()"
+              style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:7px 12px;color:var(--text);font-family:var(--font-mono);font-size:0.72rem">
+              <option value="">— Choisir —</option>
+            </select>
+          </div>
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Code</th>
+                <th>Statut</th>
+                <th>Vérifié le</th>
+                <th>Latitude</th>
+                <th>Longitude</th>
+              </tr>
+            </thead>
+            <tbody id="auth-codes-tbody">
+              <tr>
+                <td colspan="5" class="empty">Sélectionner un produit</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Journal géolocalisé -->
+        <div class="section">
+          <div class="section-header">
+            <div class="section-title">🌍 Journal des vérifications clients</div>
+            <button class="btn btn-ghost" onclick="loadVerifLogs()">↻</button>
+          </div>
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Code</th>
+                <th>Produit</th>
+                <th>Résultat</th>
+                <th>Note</th>
+                <th>Lat.</th>
+                <th>Long.</th>
+                <th>Date</th>
+              </tr>
+            </thead>
+            <tbody id="auth-logs-tbody">
+              <tr>
+                <td colspan="7" class="loading">Chargement…</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- CONFIG -->
+      <div id="page-config" style="display:none">
+        <div class="topbar">
+          <div class="page-title">Configuration API</div>
+        </div>
+        <div class="config-box">
+          <div class="section-title" style="margin-bottom:14px">🔌 Connexion Backend</div>
+          <div class="field">
+            <label>URL du backend FastAPI</label>
+            <div class="config-row">
+              <input id="cfg-url" value="http://localhost:8000" />
+              <button class="btn btn-ghost" onclick="saveConfig()">Sauver</button>
+            </div>
+          </div>
+          <div class="field">
+            <label>Session web</label>
+            <div class="config-row">
+              <input id="cfg-session-mode" value="JWT stocke en sessionStorage" readonly />
+            </div>
+          </div>
+          <div style="margin-top:16px;display:flex;gap:10px">
+            <button class="btn btn-primary" onclick="testConnection()">Tester la connexion</button>
+            <button class="btn btn-ghost" onclick="refreshAll()">↻ Actualiser les données</button>
+          </div>
+        </div>
+        <div class="config-box">
+          <div class="section-title" style="margin-bottom:12px">📖 Documentation rapide</div>
+          <div class="code-block" id="api-doc-block">Sauvegardez l'URL pour voir la doc…</div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- MODAL PRODUIT -->
+  <div class="overlay" id="modal-product">
+    <div class="modal">
+      <div class="modal-title" id="modal-product-title">Nouveau produit</div>
+      <input type="hidden" id="mp-id" />
+      <div class="field-row">
+        <div class="field"><label>Nom *</label><input id="mp-name" placeholder="Riz blanc 5kg" /></div>
+        <div class="field"><label>SKU</label><input id="mp-sku" placeholder="SKU-001" /></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Prix (FCFA) *</label><input id="mp-price" type="number" placeholder="3500" /></div>
+        <div class="field"><label>Stock *</label><input id="mp-stock" type="number" placeholder="100" /></div>
+      </div>
+      <div class="field"><label>Description</label><textarea id="mp-desc" rows="2"
+          placeholder="Description optionnelle…"></textarea></div>
+      <div class="field">
+        <label>Image produit (jpg/png/webp)</label>
+        <input type="file" id="mp-image" accept="image/*"
+          style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:9px 12px;color:var(--muted);font-family:var(--font-mono);font-size:0.75rem" />
+        <div id="mp-image-preview" style="margin-top:8px;display:none">
+          <img id="mp-img-thumb" src="" style="max-height:80px;border-radius:6px;border:1px solid var(--border)" />
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" onclick="closeModal('modal-product')">Annuler</button>
+        <button class="btn btn-primary" onclick="saveProduct()">Enregistrer</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL VENTE -->
+  <div class="overlay" id="modal-sale">
+    <div class="modal">
+      <div class="modal-title">Nouvelle vente</div>
+      <div class="field"><label>Client (optionnel)</label><input id="ms-customer" placeholder="Nom du client…" /></div>
+      <div class="field"><label>Produit</label>
+        <select id="ms-product"
+          style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:9px 12px;color:var(--text);font-family:var(--font-mono);font-size:0.8rem">
+          <option value="">— Choisir un produit —</option>
+        </select>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Quantité</label><input id="ms-qty" type="number" value="1" min="1" /></div>
+      </div>
+      <div class="field"><label>Note</label><input id="ms-note" placeholder="Note optionnelle…" /></div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" onclick="closeModal('modal-sale')">Annuler</button>
+        <button class="btn btn-primary" onclick="saveSale()">Valider la vente</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST -->
+  <div class="toast-container" id="toasts"></div>
+
+  <script>
+    // ─── CONFIG ──────────────────────────────────────────────
+    const DEFAULT_BASE_URL =
+      window.location.protocol.startsWith('http') && window.location.origin !== 'null'
+        ? window.location.origin
+        : 'http://localhost:8000';
+    let BASE_URL = localStorage.getItem('erp_url') || DEFAULT_BASE_URL;
+    const ACCESS_TOKEN_KEY = 'erp_access_token_v2';
+    const REFRESH_TOKEN_KEY = 'erp_refresh_token_v2';
+    const SESSION_KEY = 'erp_session_v2';
+    let accessToken = sessionStorage.getItem(ACCESS_TOKEN_KEY) || '';
+    let refreshToken = sessionStorage.getItem(REFRESH_TOKEN_KEY) || '';
+    let sessionState = null;
+    let refreshPromise = null;
+    let allProducts = [];
+    let allSales = [];
+    let webhookLog = [];
+
+    function authHeaders(includeContentType = true) {
+      const headers = {};
+      if (includeContentType) headers['Content-Type'] = 'application/json';
+      if (accessToken) headers['Authorization'] = `Bearer ${accessToken}`;
+      return headers;
+    }
+
+    function persistSession() {
+      if (accessToken) sessionStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
+      else sessionStorage.removeItem(ACCESS_TOKEN_KEY);
+      if (refreshToken) sessionStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
+      else sessionStorage.removeItem(REFRESH_TOKEN_KEY);
+      if (sessionState) sessionStorage.setItem(SESSION_KEY, JSON.stringify(sessionState));
+      else sessionStorage.removeItem(SESSION_KEY);
+    }
+
+    function setAuthVisible(visible) {
+      document.getElementById('auth-screen').classList.toggle('hidden', !visible);
+      document.body.classList.toggle('auth-shell-hidden', visible);
+    }
+
+    function renderSession() {
+      const cached = sessionState || JSON.parse(sessionStorage.getItem(SESSION_KEY) || 'null');
+      const user = cached?.identifier || cached?.email || cached?.company_id || 'Non connecte';
+      const companyBits = [cached?.company_name || '', cached?.role || '', cached?.plan ? `plan ${cached.plan}` : '']
+        .filter(Boolean);
+      document.getElementById('session-user').textContent = user;
+      document.getElementById('session-company').textContent = companyBits.join(' • ') || 'Aucune boutique';
+    }
+
+    function setSession(tokenPayload) {
+      accessToken = tokenPayload.access_token || '';
+      refreshToken = tokenPayload.refresh_token || refreshToken || '';
+      sessionState = {
+        email: tokenPayload.email || document.getElementById('login-email')?.value?.trim() || '',
+        identifier: tokenPayload.identifier || document.getElementById('login-email')?.value?.trim() || '',
+        company_id: tokenPayload.company_id || '',
+        company_name: tokenPayload.company_name || '',
+        role: tokenPayload.role || '',
+        plan: tokenPayload.plan || '',
+      };
+      persistSession();
+      renderSession();
+      setAuthVisible(false);
+    }
+
+    function clearSession() {
+      accessToken = '';
+      refreshToken = '';
+      sessionState = null;
+      persistSession();
+      renderSession();
+    }
+
+    let authMode = 'login';
+
+    function setLoginError(message = '') {
+      document.getElementById('login-error').textContent = message;
+    }
+
+    function setLoginBusy(isBusy) {
+      const btn = document.getElementById('login-submit');
+      btn.disabled = isBusy;
+      btn.textContent = isBusy
+        ? (authMode === 'register' ? 'Création...' : 'Connexion...')
+        : (authMode === 'register' ? 'Créer le compte' : 'Se connecter');
+    }
+
+    function setAuthMode(mode) {
+      authMode = mode;
+      document.getElementById('auth-title').textContent = mode === 'register' ? 'Inscription' : 'Connexion';
+      document.getElementById('auth-subtitle').textContent = mode === 'register'
+        ? "Cree ta boutique puis confirme le mot de passe administrateur."
+        : "Entre le matricule de ta boutique pour ouvrir le dashboard web.";
+      document.getElementById('auth-switch-label').textContent = mode === 'register'
+        ? 'Déjà un compte ?'
+        : 'Créer un compte';
+      document.getElementById('register-company-field').classList.toggle('hidden', mode !== 'register');
+      document.getElementById('register-confirm-field').classList.toggle('hidden', mode !== 'register');
+      document.getElementById('login-password').autocomplete = mode === 'register' ? 'new-password' : 'current-password';
+      document.getElementById('login-identifier-label').textContent = mode === 'register'
+        ? 'Email administrateur'
+        : 'Matricule boutique';
+      document.getElementById('login-email').placeholder = mode === 'register'
+        ? 'exemple@boutique.com'
+        : 'demo-shop';
+      setLoginBusy(false);
+      setLoginError('');
+    }
+
+    function togglePassword(inputId, button) {
+      const input = document.getElementById(inputId);
+      const isHidden = input.type === 'password';
+      input.type = isHidden ? 'text' : 'password';
+      button.textContent = isHidden ? 'Masquer' : 'Voir';
+    }
+
+    function prefillDemoAdmin() {
+      setAuthMode('login');
+      document.getElementById('login-email').value = 'demo-shop';
+      document.getElementById('login-password').value = 'AdminDemo123!';
+      setLoginError('');
+    }
+
+    async function refreshAccessToken() {
+      if (!refreshToken) return false;
+      if (refreshPromise) return refreshPromise;
+
+      refreshPromise = (async () => {
+        try {
+          const res = await fetch(BASE_URL + '/auth/refresh', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ refresh_token: refreshToken }),
+          });
+          if (!res.ok) throw new Error('Session expirée');
+          const payload = await res.json();
+          setSession({
+            ...payload,
+            email: sessionState?.email || '',
+            identifier: sessionState?.identifier || sessionState?.company_id || '',
+          });
+          return true;
+        } catch (e) {
+          clearSession();
+          setAuthVisible(true);
+          setLoginError('Ta session a expiré. Reconnecte-toi pour continuer.');
+          return false;
+        } finally {
+          refreshPromise = null;
+        }
+      })();
+
+      return refreshPromise;
+    }
+
+    async function login(event) {
+      event.preventDefault();
+      setLoginError('');
+      setLoginBusy(true);
+      try {
+        const identifier = document.getElementById('login-email').value.trim();
+        const password = document.getElementById('login-password').value;
+        const confirmPassword = document.getElementById('register-confirm-password').value;
+        const companyName = document.getElementById('register-company').value.trim();
+        const isRegister = authMode === 'register';
+        if (isRegister && !companyName) {
+          throw new Error('Le nom de la boutique est requis');
+        }
+        if (isRegister && password !== confirmPassword) {
+          throw new Error('Les mots de passe ne correspondent pas');
+        }
+        const payload = isRegister
+          ? {
+              company_name: companyName,
+              email: identifier,
+              password,
+              confirm_password: confirmPassword,
+            }
+          : {
+              identifier,
+              password,
+            };
+        const endpoint = isRegister ? '/auth/register' : '/auth/login';
+        const res = await fetch(BASE_URL + endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.detail || (isRegister ? 'Inscription impossible' : 'Connexion impossible'));
+        setSession({ ...data, email: isRegister ? identifier : '' });
+        toast(isRegister ? 'Compte cree' : 'Connexion reussie', 'ok');
+        refreshAll();
+      } catch (e) {
+        setLoginError(e.message || 'Connexion impossible');
+      } finally {
+        setLoginBusy(false);
+      }
+    }
+
+    async function loadCurrentSession() {
+      if (!accessToken) {
+        clearSession();
+        return false;
+      }
+      try {
+        const me = await apiFetch('/auth/me', { skipAuthRetry: true });
+        sessionState = {
+          email: me.email,
+          company_id: me.company_id,
+          company_name: sessionState?.company_name || me.company_id,
+          role: me.role,
+          plan: sessionState?.plan || '',
+        };
+        persistSession();
+        renderSession();
+        setAuthVisible(false);
+        return true;
+      } catch (e) {
+        const refreshed = await refreshAccessToken();
+        if (!refreshed) {
+          clearSession();
+          return false;
+        }
+        const me = await apiFetch('/auth/me', { skipAuthRetry: true });
+        sessionState = {
+          email: me.email,
+          company_id: me.company_id,
+          company_name: sessionState?.company_name || me.company_id,
+          role: me.role,
+          plan: sessionState?.plan || '',
+        };
+        persistSession();
+        renderSession();
+        setAuthVisible(false);
+        return true;
+      }
+    }
+
+    function logout() {
+      if (!window.confirm('Voulez-vous vraiment vous deconnecter du dashboard web ?')) {
+        return;
+      }
+      clearSession();
+      setAuthVisible(true);
+      setLoginError('');
+      setApiStatus(false, 'Authentification requise');
+    }
+
+    function saveConfig() {
+      BASE_URL = document.getElementById('cfg-url').value.trim().replace(/\/$/, '');
+      localStorage.setItem('erp_url', BASE_URL);
+      document.getElementById('api-doc-block').textContent =
+        `Docs Swagger : ${BASE_URL}/docs\nDocs ReDoc   : ${BASE_URL}/redoc\nHealth       : ${BASE_URL}/health`;
+      toast('Configuration sauvegardée', 'ok');
+      document.getElementById('webhook-url').value = BASE_URL + '/api/webhook/sale';
+      refreshAll();
+    }
+
+    // ─── NAVIGATION ─────────────────────────────────────────
+    function showPage(page) {
+      if (!accessToken && page !== 'config') {
+        setAuthVisible(true);
+        setApiStatus(false, 'Authentification requise');
+        return;
+      }
+      ['dashboard', 'products', 'sales', 'webhook', 'authenticity', 'config'].forEach(p => {
+        document.getElementById('page-' + p).style.display = p === page ? '' : 'none';
+        document.getElementById('nav-' + p).classList.toggle('active', p === page);
+      });
+      if (page === 'products') loadProducts();
+      if (page === 'sales') loadSales();
+      if (page === 'dashboard') loadDashboard();
+      if (page === 'webhook') populateWebhookSelect();
+      if (page === 'authenticity') { loadAuthStats(); populateAuthSelects(); loadVerifLogs(); }
+      if (page === 'config') {
+        document.getElementById('cfg-url').value = BASE_URL;
+        document.getElementById('cfg-session-mode').value = 'JWT stocke en sessionStorage';
+        document.getElementById('api-doc-block').textContent =
+          `Docs Swagger : ${BASE_URL}/docs\nDocs ReDoc   : ${BASE_URL}/redoc\nHealth       : ${BASE_URL}/health`;
+      }
+    }
+
+    // ─── API HELPERS ─────────────────────────────────────────
+    function describeApiError(err) {
+      if (!err) return 'Erreur inconnue';
+      if (err.isNetworkError) return 'Backend non joignable';
+      if (err.status === 401) return 'Authentification requise : verifie le JWT ou la cle API';
+      if (err.status === 403) return 'Acces refuse : permissions insuffisantes';
+      return err.message || 'Erreur API';
+    }
+
+    function requiresAuth(path) {
+      return path.startsWith('/api/') || path === '/auth/me';
+    }
+
+    async function apiFetch(path, opts = {}) {
+      const { skipAuthRetry = false, ...fetchOptions } = opts;
+      if (requiresAuth(path) && !accessToken) {
+        const authErr = new Error('Authentification requise');
+        authErr.status = 401;
+        throw authErr;
+      }
+      const requestHeaders = { ...authHeaders(true), ...(fetchOptions.headers || {}) };
+      let res;
+      try {
+        res = await fetch(BASE_URL + path, { ...fetchOptions, headers: requestHeaders });
+      } catch (cause) {
+        const err = new Error('Backend non joignable');
+        err.isNetworkError = true;
+        err.cause = cause;
+        throw err;
+      }
+      if (res.status === 401 && accessToken && !skipAuthRetry) {
+        const refreshed = await refreshAccessToken();
+        if (refreshed) {
+          return apiFetch(path, { ...fetchOptions, skipAuthRetry: true });
+        }
+      }
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: res.statusText }));
+        const apiErr = new Error(err.detail || 'Erreur API');
+        apiErr.status = res.status;
+        throw apiErr;
+      }
+      return res.json();
+    }
+
+    // ─── DASHBOARD ──────────────────────────────────────────
+    async function loadDashboard() {
+      try {
+        const stats = await apiFetch('/api/stats');
+        document.getElementById('stat-revenue').textContent = fmtPrice(stats.total_revenue);
+        document.getElementById('stat-sales').textContent = stats.total_sales;
+        document.getElementById('stat-products').textContent = stats.total_products;
+        document.getElementById('stat-lowstock').textContent = stats.low_stock_count;
+
+        const lowTbody = document.getElementById('low-stock-tbody');
+        if (stats.low_stock_items.length === 0) {
+          lowTbody.innerHTML = '<tr><td colspan="4" class="empty">Aucune alerte stock</td></tr>';
+        } else {
+          lowTbody.innerHTML = stats.low_stock_items.map(p => `
+        <tr>
+          <td>${p.name}</td>
+          <td class="sku">${p.sku}</td>
+          <td><span class="badge ${p.stock < 5 ? 'low' : 'warn'}">${p.stock}</span></td>
+          <td>${fmtPrice(p.price)}</td>
+        </tr>`).join('');
+        }
+
+        const sales = await apiFetch('/api/sales');
+        const recentTbody = document.getElementById('recent-sales-tbody');
+        const recent = sales.slice(-5).reverse();
+        if (recent.length === 0) {
+          recentTbody.innerHTML = '<tr><td colspan="7" class="empty">Aucune vente</td></tr>';
+        } else {
+          recentTbody.innerHTML = recent.map(s => {
+            const items = s.items || [];
+            if (!items.length) return `<tr>
+          <td style="color:var(--accent)">${s.reference}</td>
+          <td colspan="3" class="sku">—</td>
+          <td>${fmtPrice(s.total)}</td>
+          <td class="sku">${s.source || 'dashboard'}</td>
+          <td class="sku">${fmtDate(s.created_at)}</td></tr>`;
+            return items.map((it, i) => `<tr>
+          ${i === 0 ? `<td style="color:var(--accent);vertical-align:top" rowspan="${items.length}">${s.reference}</td>` : ''}
+          <td>${it.product_name || it.name || '—'}</td>
+          <td style="text-align:center">${it.quantity || 1}</td>
+          <td>${fmtPrice(it.unit_price || 0)}</td>
+          ${i === 0 ? `<td style="vertical-align:top;font-weight:500" rowspan="${items.length}">${fmtPrice(s.total)}</td>
+          <td class="sku" style="vertical-align:top" rowspan="${items.length}">${s.source || 'dashboard'}</td>
+          <td class="sku" style="vertical-align:top" rowspan="${items.length}">${fmtDate(s.created_at)}</td>` : ''}
+        </tr>`).join('');
+          }).join('');
+        }
+        setApiStatus(true);
+      } catch (e) {
+        const msg = describeApiError(e);
+        setApiStatus(!e.isNetworkError, e.isNetworkError ? 'Backend non joignable' : 'Backend connecte, authentification requise');
+        document.getElementById('low-stock-tbody').innerHTML = `<tr><td colspan="4" class="empty">${msg}</td></tr>`;
+        document.getElementById('recent-sales-tbody').innerHTML = `<tr><td colspan="5" class="empty">${msg}</td></tr>`;
+      }
+    }
+
+    // ─── PRODUCTS ───────────────────────────────────────────
+    async function loadProducts() {
+      try {
+        allProducts = await apiFetch('/api/products');
+        renderProducts(allProducts);
+      } catch (e) {
+        document.getElementById('products-tbody').innerHTML = `<tr><td colspan="6" class="empty">Erreur : ${e.message}</td></tr>`;
+      }
+    }
+
+    function renderProducts(products) {
+      const tbody = document.getElementById('products-tbody');
+      if (products.length === 0) { tbody.innerHTML = '<tr><td colspan="6" class="empty">Aucun produit</td></tr>'; return; }
+      tbody.innerHTML = products.map(p => {
+        const status = p.stock === 0 ? 'low' : p.stock < 10 ? 'warn' : 'ok';
+        const label = p.stock === 0 ? 'Rupture' : p.stock < 10 ? 'Faible' : 'OK';
+        return `<tr>
+      <td>${p.name}</td>
+      <td class="sku">${p.sku}</td>
+      <td>${fmtPrice(p.price)}</td>
+      <td>${p.stock}</td>
+      <td><span class="badge ${status}">${label}</span></td>
+      <td style="display:flex;gap:6px">
+        <button class="btn btn-ghost" style="padding:4px 10px;font-size:0.65rem" onclick='editProduct(${JSON.stringify(p)})'>Éditer</button>
+        <button class="btn btn-danger" style="padding:4px 10px;font-size:0.65rem" onclick="deleteProduct('${p.id}')">✕</button>
+      </td>
+    </tr>`;
+      }).join('');
+    }
+
+    function filterProducts(q) {
+      const filtered = allProducts.filter(p =>
+        p.name.toLowerCase().includes(q.toLowerCase()) || p.sku.toLowerCase().includes(q.toLowerCase())
+      );
+      renderProducts(filtered);
+    }
+
+    function openProductModal() {
+      document.getElementById('modal-product-title').textContent = 'Nouveau produit';
+      ['mp-id', 'mp-name', 'mp-sku', 'mp-price', 'mp-stock', 'mp-desc'].forEach(id => document.getElementById(id).value = '');
+      document.getElementById('modal-product').classList.add('show');
+    }
+
+    function editProduct(p) {
+  document.getElementById('modal-product-title').textContent = 'Modifier le produit';
+  document.getElementById('mp-id').value = p.id;
+  document.getElementById('mp-name').value = p.name;
+  document.getElementById('mp-sku').value = p.sku;
+  document.getElementById('mp-price').value = p.price;
+  document.getElementById('mp-stock').value = p.stock;
+  document.getElementById('mp-desc').value = p.description || '';
+
+  // ── AJOUT : prévisualiser l'image existante ──────────────
+  const preview = document.getElementById('mp-image-preview');
+  const thumb   = document.getElementById('mp-img-thumb');
+  if (p.image_url) {
+    thumb.src = BASE_URL + p.image_url;
+    preview.style.display = 'block';
+  } else {
+    thumb.src = '';
+    preview.style.display = 'none';
+  }
+  // Réinitialiser le champ fichier
+  document.getElementById('mp-image').value = '';
+  // ────────────────────────────────────────────────────────
+
+  document.getElementById('modal-product').classList.add('show');
+}
+
+    async function saveProduct() {
+      const id = document.getElementById('mp-id').value;
+      const data = {
+        name: document.getElementById('mp-name').value,
+        sku: document.getElementById('mp-sku').value,
+        price: parseFloat(document.getElementById('mp-price').value),
+        stock: parseInt(document.getElementById('mp-stock').value),
+        description: document.getElementById('mp-desc').value
+      };
+      if (!data.name || isNaN(data.price) || isNaN(data.stock)) { toast('Remplir les champs obligatoires', 'err'); return; }
+      const normalizedName = data.name.trim().toLowerCase();
+      const duplicate = allProducts.some((product) =>
+        product.id !== id && String(product.name || '').trim().toLowerCase() === normalizedName
+      );
+      if (duplicate) {
+        toast('Un produit avec ce libelle existe deja', 'err');
+        return;
+      }
+      try {
+        let savedId = id;
+        if (id) {
+          await apiFetch('/api/products/' + id, { method: 'PUT', body: JSON.stringify(data) });
+          toast('Produit mis à jour', 'ok');
+        } else {
+          const created = await apiFetch('/api/products', { method: 'POST', body: JSON.stringify(data) });
+          savedId = created.id;
+          toast('Produit créé', 'ok');
+        }
+        // Upload image si sélectionnée
+        const imgFile = document.getElementById('mp-image').files[0];
+        if (imgFile && savedId) {
+          const fd = new FormData();
+          fd.append('file', imgFile);
+          await fetch(BASE_URL + '/api/products/' + savedId + '/image', {
+            method: 'POST',
+            headers: authHeaders(false),
+            body: fd,
+          });
+          toast('Image uploadée', 'ok');
+        }
+        closeModal('modal-product');
+        loadProducts();
+        loadDashboard();
+      } catch (e) { toast(e.message, 'err'); }
+    }
+
+    async function deleteProduct(id) {
+      if (!confirm('Supprimer ce produit ?')) return;
+      try {
+        await apiFetch('/api/products/' + id, { method: 'DELETE' });
+        toast('Produit supprimé', 'ok');
+        loadProducts();
+        loadDashboard();
+      } catch (e) { toast(e.message, 'err'); }
+    }
+
+    // ─── SALES ──────────────────────────────────────────────
+    async function loadSales() {
+      try {
+        const period = document.getElementById('sales-period-filter')?.value || 'all';
+        allSales = await apiFetch('/api/sales?period=' + encodeURIComponent(period));
+        const tbody = document.getElementById('sales-tbody');
+        if (allSales.length === 0) { tbody.innerHTML = '<tr><td colspan="8" class="empty">Aucune vente</td></tr>'; return; }
+        tbody.innerHTML = [...allSales].reverse().map(s => {
+          const items = s.items || [];
+          if (!items.length) return `<tr>
+        <td style="color:var(--accent)">${s.reference}</td>
+        <td colspan="4" class="sku">—</td>
+        <td style="font-weight:500;color:var(--accent)">${fmtPrice(s.total)}</td>
+        <td class="sku">${s.source || 'dashboard'}</td>
+        <td class="sku">${fmtDate(s.created_at)}</td></tr>`;
+          return items.map((it, i) => `<tr>
+        ${i === 0 ? `<td style="color:var(--accent);vertical-align:top" rowspan="${items.length}">${s.reference}</td>` : ''}
+        <td>${it.product_name || it.name || '—'}</td>
+        <td style="text-align:center">${it.quantity || 1}</td>
+        <td>${fmtPrice(it.unit_price || 0)}</td>
+        <td>${fmtPrice(it.subtotal || (it.unit_price || 0) * (it.quantity || 1))}</td>
+        ${i === 0 ? `<td style="vertical-align:top;font-weight:500;color:var(--accent)" rowspan="${items.length}">${fmtPrice(s.total)}</td>
+        <td class="sku" style="vertical-align:top" rowspan="${items.length}">${s.source || 'dashboard'}</td>
+        <td class="sku" style="vertical-align:top" rowspan="${items.length}">${fmtDate(s.created_at)}</td>` : ''}
+      </tr>`).join('');
+        }).join('');
+      } catch (e) {
+        document.getElementById('sales-tbody').innerHTML = `<tr><td colspan="6" class="empty">Erreur : ${e.message}</td></tr>`;
+      }
+    }
+
+    function openSaleModal() {
+      const sel = document.getElementById('ms-product');
+      sel.innerHTML = '<option value="">— Choisir —</option>' + allProducts.map(p =>
+        `<option value="${p.id}">${p.name} (stock: ${p.stock})</option>`).join('');
+      document.getElementById('modal-sale').classList.add('show');
+    }
+
+    async function saveSale() {
+      const pid = document.getElementById('ms-product').value;
+      const qty = parseInt(document.getElementById('ms-qty').value);
+      if (!pid || isNaN(qty)) { toast('Sélectionner un produit', 'err'); return; }
+      try {
+        await apiFetch('/api/sales', {
+          method: 'POST', body: JSON.stringify({
+            items: [{ product_id: pid, quantity: qty }],
+            customer: document.getElementById('ms-customer').value,
+            note: document.getElementById('ms-note').value
+          })
+        });
+        toast('Vente enregistrée', 'ok');
+        closeModal('modal-sale');
+        loadSales();
+        loadDashboard();
+      } catch (e) { toast(e.message, 'err'); }
+    }
+
+    // ─── WEBHOOK ─────────────────────────────────────────────
+    function populateWebhookSelect() {
+      document.getElementById('webhook-url').value = BASE_URL + '/api/webhook/sale';
+      const sel = document.getElementById('wh-product');
+      sel.innerHTML = '<option value="">— Choisir un produit —</option>' + allProducts.map(p =>
+        `<option value="${p.id}" data-sku="${p.sku}">${p.name} (${p.sku})</option>`).join('');
+    }
+
+    async function testWebhook() {
+      const sel = document.getElementById('wh-product');
+      const opt = sel.options[sel.selectedIndex];
+      if (!opt.value) { toast('Sélectionner un produit', 'err'); return; }
+      const payload = {
+        sale_reference: document.getElementById('wh-ref').value || 'TEST-001',
+        total: parseFloat(document.getElementById('wh-total').value) || 0,
+        items: [{ product_id: opt.value, sku: opt.dataset.sku, quantity: parseInt(document.getElementById('wh-qty').value) || 1 }]
+      };
+      const t0 = Date.now();
+      try {
+        const res = await apiFetch('/api/webhook/sale', { method: 'POST', body: JSON.stringify(payload) });
+        const ms = Date.now() - t0;
+        webhookLog.unshift({ time: new Date().toLocaleTimeString(), ok: res.success, detail: JSON.stringify(res, null, 2), ms });
+        toast(res.success ? 'Webhook OK' : 'Webhook partiel', res.success ? 'ok' : 'err');
+        loadDashboard();
+      } catch (e) {
+        webhookLog.unshift({ time: new Date().toLocaleTimeString(), ok: false, detail: e.message, ms: Date.now() - t0 });
+        toast(e.message, 'err');
+      }
+      renderLog();
+    }
+
+    function renderLog() {
+      const c = document.getElementById('webhook-log-container');
+      if (webhookLog.length === 0) { c.innerHTML = '<div class="empty">Aucun appel encore</div>'; return; }
+      c.innerHTML = webhookLog.map(l => `
+    <div class="log-entry">
+      <span class="log-time">${l.time}</span>
+      <span class="${l.ok ? 'log-ok' : 'log-err'}">${l.ok ? '✓ OK' : '✗ ERR'}</span>
+      <span class="log-detail"><pre style="white-space:pre-wrap;font-size:0.68rem">${l.detail}</pre></span>
+      <span class="log-time">${l.ms}ms</span>
+    </div>`).join('');
+    }
+
+    function copyWebhook() {
+      navigator.clipboard.writeText(document.getElementById('webhook-url').value);
+      toast('URL copiée', 'ok');
+    }
+
+    // ─── UTILS ──────────────────────────────────────────────
+    function closeModal(id) { document.getElementById(id).classList.remove('show'); }
+    function fmtPrice(n) { return new Intl.NumberFormat('fr-FR').format(n || 0) + ' FCFA'; }
+    function fmtDate(d) { return d ? new Date(d).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'; }
+    function setApiStatus(ok, message = null) {
+      document.getElementById('api-status-dot').className = 'dot' + (ok ? '' : ' red');
+      document.getElementById('api-status-text').textContent = message || (ok ? 'Backend connecté' : 'Backend non joignable');
+    }
+    function toast(msg, type = 'ok') {
+      const el = document.createElement('div');
+      el.className = 'toast ' + type;
+      el.textContent = (type === 'ok' ? '✓ ' : '✗ ') + msg;
+      document.getElementById('toasts').appendChild(el);
+      setTimeout(() => el.remove(), 3200);
+    }
+
+    async function testConnection() {
+      try {
+        await apiFetch('/health');
+        toast('Connexion OK', 'ok');
+        setApiStatus(true);
+        refreshAll();
+      } catch (e) {
+        toast(describeApiError(e), 'err');
+        setApiStatus(false);
+      }
+    }
+
+    function refreshAll() {
+      if (!accessToken) return;
+      loadDashboard();
+      loadProducts();
+      loadSales();
+    }
+
+    // ─── AUTHENTICITÉ ────────────────────────────────────────────────────────────
+    let lastAuthCodes = [];
+
+    function populateAuthSelects() {
+      ['auth-gen-product', 'auth-view-product'].forEach(id => {
+        const sel = document.getElementById(id);
+        sel.innerHTML = '<option value="">— Choisir —</option>' +
+          allProducts.map(p => `<option value="${p.id}">${p.name} (${p.sku})</option>`).join('');
+      });
+    }
+
+    async function loadAuthStats() {
+      try {
+        const s = await apiFetch('/api/authenticity/stats');
+        document.getElementById('auth-total').textContent = s.total_codes;
+        document.getElementById('auth-used').textContent = s.used_codes;
+        document.getElementById('auth-verif').textContent = s.total_verifications;
+        document.getElementById('auth-fake').textContent = s.fake_attempts;
+      } catch (e) { }
+    }
+
+
+async function generateAuthCodes() {
+  const sel = document.getElementById('auth-gen-product');
+  const pid = sel.value;
+  const qty = parseInt(document.getElementById('auth-gen-qty').value) || 1;
+  if (!pid) { toast('Sélectionner un produit', 'err'); return; }
+  try {
+    const res = await apiFetch(`/api/products/${pid}/generate-codes`, {
+      method: 'POST', body: JSON.stringify({ quantity: qty })
+    });
+    // res est un array direct [{id, code, status, ...}, ...]
+    lastAuthCodes = res.map(c => c.code);
+    const pName = sel.options[sel.selectedIndex].text;
+    toast(`${res.length} code(s) générés pour "${pName}"`, 'ok');
+    document.getElementById('auth-codes-grid').innerHTML = res.map(c =>
+      `<span style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:6px 14px;font-family:var(--font-mono);font-size:0.85rem;font-weight:500;color:var(--accent);letter-spacing:0.12em">${c.code}</span>`
+    ).join('');
+    document.getElementById('auth-gen-result').style.display = '';
+    loadAuthStats();
+  } catch(e) { toast(e.message,'err'); }
+}
+
+    function copyAllAuthCodes() {
+      navigator.clipboard.writeText(lastAuthCodes.join('\n'));
+      toast('Codes copiés', 'ok');
+    }
+
+    function printAuthCodes() {
+      const win = window.open('', '_blank');
+      win.document.write(`<html><head><title>Codes authenticité</title>
+  <style>body{font-family:monospace;padding:20px}h2{margin-bottom:16px;font-size:13px}
+  .g{display:flex;flex-wrap:wrap;gap:6px}.c{border:1px solid #ccc;border-radius:4px;padding:8px 14px;font-size:16px;font-weight:700}</style>
+  </head><body><h2>Codes d'authenticité — ${new Date().toLocaleDateString('fr-FR')}</h2>
+  <div class="g">${lastAuthCodes.map(c => `<div class="c">${c}</div>`).join('')}</div></body></html>`);
+      win.print();
+    }
+
+    async function loadProductAuthCodes() {
+      const pid = document.getElementById('auth-view-product').value;
+      if (!pid) return;
+      try {
+        const res = await apiFetch(`/api/products/${pid}/codes`);
+        console.log('Premier code:', JSON.stringify(res[0])); 
+        const tbody = document.getElementById('auth-codes-tbody');
+        if (!res.length) { tbody.innerHTML = '<tr><td colspan="5" class="empty">Aucun code</td></tr>'; return; }
+        tbody.innerHTML = res.map(c => `<tr>
+  <td style="font-family:var(--font-mono);font-size:0.85rem;font-weight:500;color:var(--accent);letter-spacing:0.12em">${c.code}</td>
+  <td><span class="badge ${c.status === 'used' ? 'low' : 'ok'}">${c.status === 'used' ? 'Utilisé' : 'Disponible'}</span></td>
+  <td class="sku">${c.verified_at ? fmtDate(c.verified_at) : '—'}</td>
+  <td class="sku">${c.latitude != null ? c.latitude.toFixed(4) : '—'}</td>
+  <td class="sku">${c.longitude != null ? c.longitude.toFixed(4) : '—'}</td>
+</tr>`).join('');
+      } catch (e) { toast(e.message, 'err'); }
+    }
+
+    async function loadVerifLogs() {
+      try {
+        const logs = await apiFetch('/api/authenticity/logs');
+        console.log(logs[0]); // dans loadVerifLogs(), après avoir reçu les logs
+        const tbody = document.getElementById('auth-logs-tbody');
+        if (!logs.length) { tbody.innerHTML = '<tr><td colspan="7" class="empty">Aucune vérification</td></tr>'; return; }
+        tbody.innerHTML = logs.map(l => `<tr>
+      <td style="font-family:var(--font-mono);font-size:0.78rem;letter-spacing:0.1em">${l.code || l.auth_code || l.code_value || '—'}</td>
+      <td>${l.product_name || '—'}</td>
+<td><span class="badge ${l.is_fraud ? 'low' : (l.is_valid ? 'ok' : 'warn')}">${l.is_fraud ? 'Fraude' : (l.is_valid ? '✓ Valide' : '✗ Échec')}</span></td>
+      <td class="sku">${l.note || '—'}</td>
+      <td class="sku">${l.latitude != null ? l.latitude.toFixed(4) : '—'}</td>
+      <td class="sku">${l.longitude != null ? l.longitude.toFixed(4) : '—'}</td>
+<td class="sku">${fmtDate(l.verified_at || l.created_at)}</td>
+    </tr>`).join('');
+      } catch (e) { }
+    }
+
+    // Preview image dans le modal produit
+    document.addEventListener('DOMContentLoaded', () => {
+      const imgInput = document.getElementById('mp-image');
+      if (imgInput) {
+        imgInput.addEventListener('change', () => {
+          const file = imgInput.files[0];
+          if (file) {
+            const preview = document.getElementById('mp-image-preview');
+            const thumb = document.getElementById('mp-img-thumb');
+            thumb.src = URL.createObjectURL(file);
+            preview.style.display = 'block';
+          }
+        });
+      }
+    });
+
+    // ─── INIT ────────────────────────────────────────────────
+    document.getElementById('webhook-url').value = BASE_URL + '/api/webhook/sale';
+    document.getElementById('login-form').addEventListener('submit', login);
+    setAuthMode('login');
+    renderSession();
+
+    (async () => {
+      const hasSession = await loadCurrentSession();
+      if (hasSession) {
+        setAuthVisible(false);
+        refreshAll();
+      } else {
+        setAuthVisible(true);
+        setApiStatus(false, 'Authentification requise');
+      }
+    })();
+  </script>
+</body>
+
+</html>
+
