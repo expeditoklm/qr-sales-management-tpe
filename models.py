@@ -20,14 +20,28 @@ def _validate_email_format(value: str) -> str:
 
 class RegisterRequest(BaseModel):
     company_name: str = Field(..., min_length=2, max_length=100)
+    commercial_name: str = Field(..., min_length=2, max_length=140)
+    rccm: str = Field(..., min_length=3, max_length=80)
+    ifu: str = Field(..., min_length=3, max_length=80)
+    address: str = Field(..., min_length=5, max_length=255)
+    phone: str = Field(..., min_length=6, max_length=40)
+    contact_email: str = Field(..., min_length=5)
     email:        str = Field(..., min_length=5)
     password:     str = Field(..., min_length=8)
     confirm_password: str = Field(..., min_length=8)
 
-    @field_validator("email")
+    @field_validator("email", "contact_email")
     @classmethod
     def email_lower(cls, v: str) -> str:
         return _validate_email_format(v)
+
+    @field_validator("company_name", "commercial_name", "rccm", "ifu", "address", "phone")
+    @classmethod
+    def trim_required_text(cls, v: str) -> str:
+        normalized = v.strip()
+        if not normalized:
+            raise ValueError("Champ requis")
+        return normalized
 
     @field_validator("password")
     @classmethod
@@ -71,9 +85,16 @@ class TokenResponse(BaseModel):
     user_id:       str
     company_id:    str
     company_name:  str
+    company_logo_url: Optional[str] = None
     secret_key:    str
     role:          str
     plan:          str
+    commercial_name: Optional[str] = None
+    rccm: Optional[str] = None
+    ifu: Optional[str] = None
+    address: Optional[str] = None
+    phone: Optional[str] = None
+    contact_email: Optional[str] = None
 
 
 class RefreshRequest(BaseModel):
@@ -115,11 +136,59 @@ class AcceptInviteRequest(BaseModel):
 class UserOut(BaseModel):
     id:         str
     company_id: str
+    company_name: Optional[str] = None
+    company_logo_url: Optional[str] = None
     email:      str
     role:       str
     is_active:  int
     created_at: str
     email_verified: int = 0
+    commercial_name: Optional[str] = None
+    rccm: Optional[str] = None
+    ifu: Optional[str] = None
+    address: Optional[str] = None
+    phone: Optional[str] = None
+    contact_email: Optional[str] = None
+
+
+class CompanyBrandingOut(BaseModel):
+    company_id: str
+    company_name: str
+    company_logo_url: Optional[str] = None
+    commercial_name: Optional[str] = None
+    rccm: Optional[str] = None
+    ifu: Optional[str] = None
+    address: Optional[str] = None
+    phone: Optional[str] = None
+    contact_email: Optional[str] = None
+
+
+class CompanyProfileUpdate(BaseModel):
+    company_name: Optional[str] = Field(default=None, max_length=100)
+    commercial_name: Optional[str] = Field(default=None, max_length=140)
+    rccm: Optional[str] = Field(default=None, max_length=80)
+    ifu: Optional[str] = Field(default=None, max_length=80)
+    address: Optional[str] = Field(default=None, max_length=255)
+    phone: Optional[str] = Field(default=None, max_length=40)
+    contact_email: Optional[str] = Field(default=None)
+
+    @field_validator("company_name", "commercial_name", "rccm", "ifu", "address", "phone", mode="before")
+    @classmethod
+    def normalize_company_profile_text(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        normalized = v.strip()
+        return normalized or None
+
+    @field_validator("contact_email", mode="before")
+    @classmethod
+    def normalize_contact_email(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        normalized = v.strip()
+        if not normalized:
+            return None
+        return _validate_email_format(normalized)
 
 
 class ActionResponse(BaseModel):
@@ -328,6 +397,7 @@ class CompanyOut(BaseModel):
     id:         str
     name:       str
     email:      str
+    logo_url:   Optional[str] = None
     plan:       str
     status:     str
     created_at: str
@@ -337,3 +407,9 @@ class CompanyOut(BaseModel):
     subscription_end_date: Optional[str] = None
     stripe_subscription_id: Optional[str] = None
     stripe_customer_id: Optional[str] = None
+    commercial_name: Optional[str] = None
+    rccm: Optional[str] = None
+    ifu: Optional[str] = None
+    address: Optional[str] = None
+    phone: Optional[str] = None
+    contact_email: Optional[str] = None

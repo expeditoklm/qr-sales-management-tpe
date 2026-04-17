@@ -33,6 +33,13 @@ def init_shared_db():
                 name        TEXT NOT NULL,
                 email       TEXT NOT NULL UNIQUE,
                 secret_key  TEXT NOT NULL DEFAULT '',
+                logo_url    TEXT,
+                commercial_name TEXT,
+                rccm        TEXT,
+                ifu         TEXT,
+                address     TEXT,
+                phone       TEXT,
+                contact_email TEXT,
                 plan        TEXT NOT NULL DEFAULT 'free',
                 status      TEXT NOT NULL DEFAULT 'active',
                 created_at  TEXT NOT NULL
@@ -98,6 +105,22 @@ def init_shared_db():
             conn.execute(
                 "ALTER TABLE companies ADD COLUMN secret_key TEXT NOT NULL DEFAULT ''"
             )
+        if "logo_url" not in company_columns:
+            conn.execute(
+                "ALTER TABLE companies ADD COLUMN logo_url TEXT"
+            )
+        if "commercial_name" not in company_columns:
+            conn.execute("ALTER TABLE companies ADD COLUMN commercial_name TEXT")
+        if "rccm" not in company_columns:
+            conn.execute("ALTER TABLE companies ADD COLUMN rccm TEXT")
+        if "ifu" not in company_columns:
+            conn.execute("ALTER TABLE companies ADD COLUMN ifu TEXT")
+        if "address" not in company_columns:
+            conn.execute("ALTER TABLE companies ADD COLUMN address TEXT")
+        if "phone" not in company_columns:
+            conn.execute("ALTER TABLE companies ADD COLUMN phone TEXT")
+        if "contact_email" not in company_columns:
+            conn.execute("ALTER TABLE companies ADD COLUMN contact_email TEXT")
         user_columns = {
             row["name"]
             for row in conn.execute("PRAGMA table_info(users)").fetchall()
@@ -139,8 +162,12 @@ def get_company_by_secret_key(secret_key: str) -> dict | None:
 def insert_company(c: dict):
     with _shared_conn() as conn:
         conn.execute(
-            "INSERT INTO companies (id,name,email,secret_key,plan,status,created_at) "
-            "VALUES (:id,:name,:email,:secret_key,:plan,:status,:created_at)", c
+            "INSERT INTO companies ("
+            "id,name,email,secret_key,logo_url,commercial_name,rccm,ifu,address,phone,contact_email,plan,status,created_at"
+            ") VALUES ("
+            ":id,:name,:email,:secret_key,:logo_url,:commercial_name,:rccm,:ifu,:address,:phone,:contact_email,:plan,:status,:created_at"
+            ")",
+            c,
         )
 
 def all_companies() -> list:
@@ -169,12 +196,41 @@ def update_company_secret_key(company_id: str, secret_key: str):
         )
 
 
+def update_company_logo(company_id: str, logo_url: str | None):
+    with _shared_conn() as conn:
+        conn.execute(
+            "UPDATE companies SET logo_url=? WHERE id=?",
+            (logo_url, company_id),
+        )
+
+
+def update_company_profile(company_id: str, payload: dict):
+    with _shared_conn() as conn:
+        conn.execute(
+            "UPDATE companies SET "
+            "name=:name, commercial_name=:commercial_name, rccm=:rccm, ifu=:ifu, "
+            "address=:address, phone=:phone, contact_email=:contact_email "
+            "WHERE id=:company_id",
+            {
+                "company_id": company_id,
+                "name": payload["name"],
+                "commercial_name": payload["commercial_name"],
+                "rccm": payload["rccm"],
+                "ifu": payload["ifu"],
+                "address": payload["address"],
+                "phone": payload["phone"],
+                "contact_email": payload["contact_email"],
+            },
+        )
+
+
 # ─── Users ────────────────────────────────────────────────────────────────────
 
 def get_user_by_email(email: str) -> dict | None:
     with _shared_conn() as conn:
         row = conn.execute(
-            "SELECT u.*, c.name as company_name, c.status as company_status "
+            "SELECT u.*, c.name as company_name, c.status as company_status, c.logo_url as company_logo_url, "
+            "c.commercial_name, c.rccm, c.ifu, c.address, c.phone, c.contact_email "
             "FROM users u JOIN companies c ON u.company_id=c.id "
             "WHERE u.email=?", (email.lower(),)
         ).fetchone()
@@ -183,7 +239,8 @@ def get_user_by_email(email: str) -> dict | None:
 def get_user_by_id(user_id: str) -> dict | None:
     with _shared_conn() as conn:
         row = conn.execute(
-            "SELECT u.*, c.name as company_name, c.status as company_status "
+            "SELECT u.*, c.name as company_name, c.status as company_status, c.logo_url as company_logo_url, "
+            "c.commercial_name, c.rccm, c.ifu, c.address, c.phone, c.contact_email "
             "FROM users u JOIN companies c ON u.company_id=c.id "
             "WHERE u.id=?", (user_id,)
         ).fetchone()
@@ -304,7 +361,8 @@ def get_email_verification_token(token: str) -> dict | None:
 def get_primary_user_for_company(company_id: str) -> dict | None:
     with _shared_conn() as conn:
         row = conn.execute(
-            "SELECT u.*, c.name as company_name, c.status as company_status "
+            "SELECT u.*, c.name as company_name, c.status as company_status, c.logo_url as company_logo_url, "
+            "c.commercial_name, c.rccm, c.ifu, c.address, c.phone, c.contact_email "
             "FROM users u JOIN companies c ON u.company_id=c.id "
             "WHERE u.company_id=? AND u.is_active=1 "
             "ORDER BY CASE u.role "

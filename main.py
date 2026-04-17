@@ -1,5 +1,5 @@
 """
-main.py — ERP TPE QR v4.0
+main.py — QuickSellPay v4.0
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Nouveautés v4 :
   • Auth JWT réel   (POST /auth/register|login|refresh|invite|accept-invite)
@@ -39,7 +39,7 @@ from auth import (
 )
 from models import *
 from rate_limit import make_limiter
-from storage import save_product_image
+from storage import save_company_logo, save_product_image
 from email_utils import send_email
 from quota import (
     check_product_quota, check_user_quota,
@@ -62,7 +62,7 @@ _rl_login  = make_limiter(cfg.RATE_LIMIT_LOGIN_REQUESTS,  cfg.RATE_LIMIT_LOGIN_W
 
 # ─── App ──────────────────────────────────────────────────────────────────────
 app = FastAPI(
-    title="ERP TPE QR",
+    title="QuickSellPay",
     description="Gestion stock, ventes & authenticité produits — multi-tenant SaaS",
     version="4.0.0",
 )
@@ -103,9 +103,33 @@ def _token_response_for_user(user: dict, company: dict | None = None) -> TokenRe
         user_id=user["id"],
         company_id=user["company_id"],
         company_name=company["name"] if company else "",
+        company_logo_url=company.get("logo_url") if company else None,
         secret_key=secret_key,
         role=user["role"],
         plan=db.get_active_plan(user["company_id"]),
+        commercial_name=company.get("commercial_name") if company else None,
+        rccm=company.get("rccm") if company else None,
+        ifu=company.get("ifu") if company else None,
+        address=company.get("address") if company else None,
+        phone=company.get("phone") if company else None,
+        contact_email=company.get("contact_email") if company else None,
+    )
+
+
+def _branding_payload(company_id: str) -> CompanyBrandingOut:
+    company = db.get_company(company_id)
+    if not company:
+        raise HTTPException(404, "Boutique introuvable")
+    return CompanyBrandingOut(
+        company_id=company["id"],
+        company_name=company["name"],
+        company_logo_url=company.get("logo_url"),
+        commercial_name=company.get("commercial_name"),
+        rccm=company.get("rccm"),
+        ifu=company.get("ifu"),
+        address=company.get("address"),
+        phone=company.get("phone"),
+        contact_email=company.get("contact_email"),
     )
 
 
@@ -274,6 +298,13 @@ def _ensure_superadmin():
             "id": company_id, "name": "Super Admin",
             "email": cfg.SUPERADMIN_EMAIL,
             "secret_key": _generate_company_secret_key(),
+            "logo_url": None,
+            "commercial_name": "QuickSellPay Super Admin",
+            "rccm": "NA",
+            "ifu": "NA",
+            "address": "Backoffice QuickSellPay",
+            "phone": "0000000000",
+            "contact_email": cfg.SUPERADMIN_EMAIL,
             "plan": "enterprise", "status": "active",
             "created_at": now,
         })
@@ -298,10 +329,16 @@ _ensure_superadmin()
 
 DEMO_COMPANY = {
     "id": "demo-shop",
-    "name": "Boutique Demo",
+    "name": "QuickSellPay Demo",
     "email": "demo@tpe-qr.com",
     "plan": "free",
     "status": "active",
+    "commercial_name": "Boutique Demo",
+    "rccm": "RCCM-DEMO-001",
+    "ifu": "IFU-DEMO-001",
+    "address": "Zone Demo, Porto-Novo",
+    "phone": "+22900000000",
+    "contact_email": "contact@demo.tpe-qr.com",
 }
 
 DEMO_USERS = [
@@ -318,6 +355,7 @@ def _ensure_demo_seed():
         db.insert_company({
             **DEMO_COMPANY,
             "secret_key": _generate_company_secret_key(),
+            "logo_url": None,
             "created_at": now,
         })
         db.init_tenant_db(DEMO_COMPANY["id"])
@@ -380,6 +418,13 @@ def register(payload: RegisterRequest):
     db.insert_company({
         "id": company_id, "name": payload.company_name,
         "secret_key": secret_key,
+        "logo_url": None,
+        "commercial_name": payload.commercial_name,
+        "rccm": payload.rccm,
+        "ifu": payload.ifu,
+        "address": payload.address,
+        "phone": payload.phone,
+        "contact_email": payload.contact_email,
         "email": payload.email, "plan": "free",
         "status": "active", "created_at": now,
     })
@@ -420,7 +465,14 @@ def register(payload: RegisterRequest):
     }, {
         "id": company_id,
         "name": payload.company_name,
+        "logo_url": None,
         "secret_key": secret_key,
+        "commercial_name": payload.commercial_name,
+        "rccm": payload.rccm,
+        "ifu": payload.ifu,
+        "address": payload.address,
+        "phone": payload.phone,
+        "contact_email": payload.contact_email,
     })
 
 
@@ -592,6 +644,51 @@ def me(current: Annotated[TokenData, Depends(get_current_user)]):
     if not user:
         raise HTTPException(404, "Utilisateur introuvable")
     return user
+
+
+@app.get("/auth/company-profile", response_model=CompanyBrandingOut, tags=["Auth"])
+def company_profile(current: Annotated[TokenData, Depends(get_current_user)]):
+    return _branding_payload(current.company_id)
+
+
+@app.patch("/auth/company-profile", response_model=CompanyBrandingOut, tags=["Auth"])
+def update_company_profile(
+    payload: CompanyProfileUpdate,
+    current: Annotated[TokenData, Depends(get_admin_user)],
+):
+    company = db.get_company(current.company_id)
+    if not company:
+        raise HTTPException(404, "Boutique introuvable")
+    next_name = payload.company_name or company.get("name") or ""
+    if len(next_name.strip()) < 2:
+        raise HTTPException(400, "Le nom de la boutique est requis")
+    db.update_company_profile(
+        current.company_id,
+        {
+            "name": next_name,
+            "commercial_name": payload.commercial_name if payload.commercial_name is not None else company.get("commercial_name"),
+            "rccm": payload.rccm if payload.rccm is not None else company.get("rccm"),
+            "ifu": payload.ifu if payload.ifu is not None else company.get("ifu"),
+            "address": payload.address if payload.address is not None else company.get("address"),
+            "phone": payload.phone if payload.phone is not None else company.get("phone"),
+            "contact_email": payload.contact_email if payload.contact_email is not None else company.get("contact_email"),
+        },
+    )
+    return _branding_payload(current.company_id)
+
+
+@app.post("/auth/company-logo", response_model=CompanyBrandingOut, tags=["Auth"])
+async def upload_company_logo(
+    request: Request,
+    current: Annotated[TokenData, Depends(get_current_user)],
+):
+    form = await request.form()
+    file: UploadFile = form.get("file")
+    if not file:
+        raise HTTPException(400, "Champ 'file' manquant")
+    logo_url = save_company_logo(current.company_id, file, STATIC_DIR)
+    db.update_company_logo(current.company_id, logo_url)
+    return _branding_payload(current.company_id)
 
 @app.get("/auth/users", response_model=List[UserOut], tags=["Auth"])
 def list_users(current: Annotated[TokenData, Depends(get_admin_user)]):
