@@ -4,27 +4,24 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>QuickSellPay — Systeme de Gestion</title>
+  <title>ERP — Système de Gestion</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link
-    href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap"
+    href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700;800&display=swap"
     rel="stylesheet" />
   <style>
     :root {
-      --bg: #edf3fa;
-      --surface: #f8fbff;
-      --surface2: #eef5fb;
-      --border: #d7e2f2;
-      --accent: #0f766e;
-      --accent2: #ff8a1f;
-      --accent3: #22c1c3;
-      --danger: #d64545;
-      --text: #0f172a;
-      --muted: #64748b;
-      --grad: linear-gradient(135deg, #0f766e 0%, #14b8a6 52%, #5eead4 100%);
-      --grad-warm: linear-gradient(135deg, #ffd15c 0%, #ff9f1c 55%, #ff7a18 100%);
-      --font-head: 'Space Grotesk', sans-serif;
-      --font-body: 'Manrope', sans-serif;
+      --bg: #0d0f14;
+      --surface: #13161e;
+      --surface2: #1a1e2a;
+      --border: #252a38;
+      --accent: #4fffb0;
+      --accent2: #ff6b6b;
+      --accent3: #ffca3a;
+      --text: #e8eaf0;
+      --muted: #5a6278;
+      --font-head: 'Syne', sans-serif;
+      --font-mono: 'DM Mono', monospace;
     }
 
     * {
@@ -36,12 +33,8 @@
     body {
       background: var(--bg);
       color: var(--text);
-      font-family: var(--font-body);
+      font-family: var(--font-mono);
       min-height: 100vh;
-      background:
-        radial-gradient(circle at top right, rgba(21, 101, 216, .12), transparent 26%),
-        radial-gradient(circle at bottom left, rgba(34, 193, 195, .09), transparent 24%),
-        var(--bg);
     }
 
     /* LAYOUT */
@@ -52,8 +45,7 @@
 
     .sidebar {
       width: 220px;
-      background: rgba(248, 251, 255, 0.92);
-      backdrop-filter: blur(18px);
+      background: var(--surface);
       border-right: 1px solid var(--border);
       display: flex;
       flex-direction: column;
@@ -70,40 +62,11 @@
       font-weight: 800;
       font-size: 1.15rem;
       letter-spacing: -0.03em;
-      background: var(--grad);
-      -webkit-background-clip: text;
-      background-clip: text;
-      color: transparent;
+      color: var(--accent);
     }
 
     .logo span {
       color: var(--text);
-    }
-
-    .brand-stack {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      padding: 0 20px 28px;
-    }
-
-    .brand-stack.compact {
-      padding: 0;
-      margin-bottom: 18px;
-    }
-
-    .brand-mark {
-      width: 42px;
-      height: 42px;
-      border-radius: 14px;
-      object-fit: cover;
-      box-shadow: 0 10px 24px rgba(15, 23, 42, 0.16);
-      flex-shrink: 0;
-    }
-
-    .brand-stack .logo {
-      padding: 0;
-      margin: 0;
     }
 
     .nav-item {
@@ -127,7 +90,7 @@
     .nav-item.active {
       color: var(--accent);
       border-left-color: var(--accent);
-      background: rgba(21, 101, 216, 0.10);
+      background: #1a2a22;
     }
 
     .nav-icon {
@@ -164,7 +127,7 @@
       border: 1px solid var(--border);
       padding: 7px 14px;
       border-radius: 6px;
-      font-size: 0.76rem;
+      font-size: 0.7rem;
       color: var(--muted);
     }
 
@@ -172,8 +135,8 @@
       width: 7px;
       height: 7px;
       border-radius: 50%;
-      background: #22c1c3;
-      box-shadow: 0 0 8px rgba(34, 193, 195, .55);
+      background: var(--accent);
+      box-shadow: 0 0 6px var(--accent);
     }
 
     .dot.red {
@@ -302,7 +265,7 @@
 
     .table td {
       padding: 11px 16px;
-      border-bottom: 1px solid var(--border);
+      border-bottom: 1px solid #1a1e2a;
     }
 
     .table tr:last-child td {
@@ -324,8 +287,8 @@
     }
 
     .badge.ok {
-      background: #16a34a;
-      color: #fff;
+      background: #1a2a22;
+      color: var(--accent);
     }
 
     .badge.low {
@@ -338,11 +301,6 @@
       color: var(--accent3);
     }
 
-    .badge.pending {
-      background: #fff1dc;
-      color: #b45309;
-    }
-
     .sku {
       color: var(--muted);
       font-size: 0.68rem;
@@ -350,36 +308,34 @@
 
     /* BUTTONS */
     .btn {
-      padding: 10px 18px;
-      border-radius: 14px;
+      padding: 8px 16px;
+      border-radius: 6px;
       border: none;
       cursor: pointer;
-      font-family: var(--font-body);
-      font-size: 0.78rem;
-      font-weight: 700;
-      letter-spacing: 0.01em;
-      transition: all .18s ease;
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      letter-spacing: 0.03em;
+      transition: all .15s;
       display: inline-flex;
       align-items: center;
       gap: 6px;
-      box-shadow: 0 12px 24px rgba(15, 23, 42, .10);
     }
 
     .btn-primary {
-      background: var(--grad);
-      color: #fff;
+      background: var(--accent);
+      color: #0d0f14;
+      font-weight: 500;
     }
 
     .btn-primary:hover {
-      transform: translateY(-2px);
-      filter: brightness(1.04);
+      background: #5fffbc;
+      transform: translateY(-1px);
     }
 
     .btn-danger {
-      background: linear-gradient(135deg, #fff1f1, #ffe4e4);
-      color: var(--danger);
-      border: 1px solid #f2c5c5;
-      box-shadow: none;
+      background: #2a1a1a;
+      color: var(--accent2);
+      border: 1px solid #3a2020;
     }
 
     .btn-danger:hover {
@@ -390,13 +346,11 @@
       background: var(--surface2);
       color: var(--text);
       border: 1px solid var(--border);
-      box-shadow: none;
     }
 
     .btn-ghost:hover {
-      border-color: var(--accent3);
+      border-color: var(--accent);
       color: var(--accent);
-      transform: translateY(-1px);
     }
 
     /* FORM / MODAL */
@@ -493,10 +447,7 @@
     }
 
     .log-ok {
-      color: #fff;
-      background: #16a34a;
-      border-radius: 999px;
-      padding: 4px 10px;
+      color: var(--accent);
     }
 
     .log-err {
@@ -592,10 +543,6 @@
       font-size: 0.78rem;
     }
 
-    .verification-row-ok td {
-      background: rgba(22, 163, 74, 0.08);
-    }
-
     .loading {
       padding: 32px;
       text-align: center;
@@ -633,9 +580,9 @@
       justify-content: center;
       padding: 24px;
       background:
-        radial-gradient(circle at top left, rgba(21, 101, 216, 0.14), transparent 30%),
-        radial-gradient(circle at bottom right, rgba(18, 185, 129, 0.12), transparent 28%),
-        rgba(244, 247, 251, 0.94);
+        radial-gradient(circle at top left, rgba(79, 255, 176, 0.16), transparent 30%),
+        radial-gradient(circle at bottom right, rgba(91, 156, 246, 0.14), transparent 28%),
+        rgba(10, 12, 18, 0.95);
       backdrop-filter: blur(18px);
     }
 
@@ -651,8 +598,8 @@
       width: min(980px, 100%);
       display: grid;
       grid-template-columns: 1.05fr 0.95fr;
-      background: rgba(255, 255, 255, 0.98);
-      border: 1px solid var(--border);
+      background: rgba(19, 22, 30, 0.98);
+      border: 1px solid rgba(79, 255, 176, 0.18);
       border-radius: 22px;
       overflow: hidden;
       box-shadow: 0 32px 70px rgba(0, 0, 0, 0.45);
@@ -661,8 +608,8 @@
     .auth-copy {
       padding: 42px;
       background:
-        linear-gradient(160deg, rgba(21, 101, 216, 0.08), transparent 52%),
-        linear-gradient(180deg, rgba(18, 185, 129, 0.08), transparent 100%);
+        linear-gradient(160deg, rgba(79, 255, 176, 0.08), transparent 52%),
+        linear-gradient(180deg, rgba(255, 202, 58, 0.08), transparent 100%);
       border-right: 1px solid var(--border);
     }
 
@@ -689,7 +636,7 @@
     }
 
     .auth-text {
-      color: var(--muted);
+      color: #b2b8c8;
       line-height: 1.7;
       font-size: 0.92rem;
       max-width: 36ch;
@@ -704,9 +651,9 @@
     .auth-point {
       padding: 14px 16px;
       border-radius: 14px;
-      background: rgba(21, 101, 216, 0.05);
-      border: 1px solid var(--border);
-      color: #334155;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      color: #cfd5e3;
       font-size: 0.82rem;
       line-height: 1.6;
     }
@@ -743,7 +690,7 @@
     .auth-form .field label {
       display: block;
       margin-bottom: 7px;
-      color: var(--muted);
+      color: #b6bfd3;
       font-size: 0.72rem;
       letter-spacing: 0.06em;
       text-transform: uppercase;
@@ -751,7 +698,7 @@
 
     .auth-form .field input {
       width: 100%;
-      background: #f8fbff;
+      background: #0f131c;
       border: 1px solid var(--border);
       color: var(--text);
       border-radius: 12px;
@@ -762,8 +709,8 @@
     }
 
     .auth-form .field input:focus {
-      border-color: rgba(21, 101, 216, 0.45);
-      box-shadow: 0 0 0 3px rgba(21, 101, 216, 0.08);
+      border-color: rgba(79, 255, 176, 0.55);
+      box-shadow: 0 0 0 3px rgba(79, 255, 176, 0.08);
     }
 
     .auth-actions {
@@ -788,7 +735,7 @@
     }
 
     .auth-legal {
-      color: var(--muted);
+      color: #9ba6bd;
       font-size: 0.7rem;
       line-height: 1.7;
       margin-top: 18px;
@@ -821,65 +768,8 @@
       padding: 14px;
       border-radius: 12px;
       border: 1px solid var(--border);
-      background: linear-gradient(180deg, #ffffff, #f8fbff);
+      background: rgba(255, 255, 255, 0.03);
       display: none;
-    }
-
-    .session-brand {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      margin-bottom: 12px;
-    }
-
-    .session-brand-avatar {
-      width: 44px;
-      height: 44px;
-      border-radius: 14px;
-      overflow: hidden;
-      display: grid;
-      place-items: center;
-      background: linear-gradient(135deg, rgba(21, 101, 216, 0.16), rgba(18, 185, 129, 0.16));
-      color: var(--accent);
-      font-family: var(--font-head);
-      font-weight: 800;
-      letter-spacing: -0.03em;
-      flex-shrink: 0;
-    }
-
-    .session-brand-avatar img {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-    }
-
-    .upload-card {
-      display: flex;
-      gap: 12px;
-      align-items: center;
-      padding: 14px;
-      border-radius: 16px;
-      border: 1px solid var(--border);
-      background: #f8fbff;
-    }
-
-    .upload-avatar {
-      width: 56px;
-      height: 56px;
-      border-radius: 18px;
-      overflow: hidden;
-      display: grid;
-      place-items: center;
-      background: linear-gradient(135deg, rgba(21, 101, 216, 0.16), rgba(18, 185, 129, 0.16));
-      color: var(--accent);
-      font-family: var(--font-head);
-      font-weight: 800;
-    }
-
-    .upload-avatar img {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
     }
 
     .session-card.show {
@@ -930,12 +820,9 @@
   <div class="auth-screen" id="auth-screen">
     <div class="auth-panel">
       <div class="auth-copy">
-        <div class="brand-stack compact">
-          <img class="brand-mark" src="/quicksellpay-logo.png" alt="QuickSellPay logo" />
-          <div class="logo">Quick<span>SellPay</span></div>
-        </div>
+        <div class="logo" style="padding:0;margin-bottom:18px">ERP<span>·SYS</span></div>
         <div class="auth-kicker">Acces securise</div>
-          <div class="auth-title">Connecte ton espace QuickSellPay web avec le meme compte que sur mobile.</div>
+        <div class="auth-title">Connecte ton espace web avec le meme compte que sur mobile.</div>
         <div class="auth-text">
           Le dashboard web utilise maintenant les endpoints JWT du backend. Les identifiants qui
           fonctionnent dans l'APK mobile fonctionnent aussi ici.
@@ -958,41 +845,6 @@
           <div class="field hidden" id="register-company-field">
             <label for="register-company">Nom de la boutique</label>
             <input id="register-company" type="text" autocomplete="organization" placeholder="Nom de la boutique" />
-          </div>
-          <div class="field hidden" id="register-commercial-field">
-            <label for="register-commercial">Nom commercial</label>
-            <input id="register-commercial" type="text" autocomplete="organization-title" placeholder="Nom commercial de la boutique ou de l'entreprise" />
-          </div>
-          <div class="field hidden" id="register-logo-field">
-            <label for="register-logo">Logo de la boutique</label>
-            <div class="upload-card">
-              <div class="upload-avatar" id="register-logo-preview">LG</div>
-              <div style="flex:1">
-                <div style="font-weight:700;color:var(--text);margin-bottom:4px">Identite visuelle</div>
-                <div style="color:var(--muted);font-size:0.75rem;line-height:1.5">Ajoute le logo des l'inscription. A defaut, un monogramme sobre sera utilise.</div>
-                <input id="register-logo" type="file" accept="image/*" style="margin-top:10px" />
-              </div>
-            </div>
-          </div>
-          <div class="field hidden" id="register-rccm-field">
-            <label for="register-rccm">Numero RCCM</label>
-            <input id="register-rccm" type="text" placeholder="Registre du Commerce" />
-          </div>
-          <div class="field hidden" id="register-ifu-field">
-            <label for="register-ifu">IFU</label>
-            <input id="register-ifu" type="text" placeholder="Identifiant Fiscal Unique" />
-          </div>
-          <div class="field hidden" id="register-address-field">
-            <label for="register-address">Adresse complete</label>
-            <input id="register-address" type="text" placeholder="Adresse du siege ou du point de vente" />
-          </div>
-          <div class="field hidden" id="register-phone-field">
-            <label for="register-phone">Numero de telephone</label>
-            <input id="register-phone" type="text" placeholder="+229 ..." />
-          </div>
-          <div class="field hidden" id="register-contact-email-field">
-            <label for="register-contact-email">Email de contact</label>
-            <input id="register-contact-email" type="email" placeholder="contact@boutique.com" />
           </div>
           <div class="field">
             <label for="login-email" id="login-identifier-label">Matricule boutique</label>
@@ -1028,18 +880,10 @@
   <div class="shell">
     <!-- SIDEBAR -->
     <aside class="sidebar">
-      <div class="brand-stack">
-        <img class="brand-mark" src="/quicksellpay-logo.png" alt="QuickSellPay logo" />
-        <div class="logo">Quick<span>SellPay</span></div>
-      </div>
+      <div class="logo">ERP<span>·SYS</span></div>
       <div class="session-card" id="session-card">
-        <div class="session-brand">
-          <div class="session-brand-avatar" id="session-avatar">BT</div>
-          <div>
-            <div class="session-label">Session active</div>
-            <div class="session-value" id="session-user">Non connecte</div>
-          </div>
-        </div>
+        <div class="session-label">Session active</div>
+        <div class="session-value" id="session-user">Non connecte</div>
         <div class="session-meta" id="session-company">Aucune boutique</div>
         <div class="session-actions">
           <button class="btn btn-ghost" type="button" onclick="logout()" style="width:100%">Deconnexion</button>
@@ -1054,11 +898,14 @@
       <div class="nav-item" onclick="showPage('sales')" id="nav-sales">
         <span class="nav-icon">↗</span> Ventes
       </div>
-      <div class="nav-item" onclick="showPage('authenticity')" id="nav-authenticity">
-        <span class="nav-icon">⬡</span> Provenance produit
+      <div class="nav-item" onclick="showPage('webhook')" id="nav-webhook">
+        <span class="nav-icon">⚡</span> Webhook
       </div>
-      <div class="nav-item" onclick="showPage('profile')" id="nav-profile">
-        <span class="nav-icon">✎</span> Boutique
+      <div class="nav-item" onclick="showPage('authenticity')" id="nav-authenticity">
+        <span class="nav-icon">⬡</span> Authenticité
+      </div>
+      <div class="nav-item" onclick="showPage('config')" id="nav-config">
+        <span class="nav-icon">⚙</span> Config API
       </div>
     </aside>
 
@@ -1275,68 +1122,11 @@
         </div>
       </div>
 
-      <div id="page-profile" style="display:none">
-        <div class="topbar">
-          <div class="page-title">Informations boutique</div>
-          <div class="api-badge">QuickSellPay Profile</div>
-        </div>
-        <div class="section">
-          <div class="section-header">
-            <div class="section-title">Identite legale et commerciale</div>
-            <button class="btn btn-primary" onclick="saveCompanyProfile()">Sauvegarder</button>
-          </div>
-          <div style="padding:20px">
-            <div class="field-row">
-              <div class="field">
-                <label>Nom de la boutique</label>
-                <input id="profile-company-name" type="text" />
-              </div>
-              <div class="field">
-                <label>Nom commercial</label>
-                <input id="profile-commercial-name" type="text" />
-              </div>
-            </div>
-            <div class="field-row">
-              <div class="field">
-                <label>Numero RCCM</label>
-                <input id="profile-rccm" type="text" />
-              </div>
-              <div class="field">
-                <label>IFU</label>
-                <input id="profile-ifu" type="text" />
-              </div>
-            </div>
-            <div class="field">
-              <label>Adresse complete du siege ou du point de vente</label>
-              <textarea id="profile-address" rows="3"></textarea>
-            </div>
-            <div class="field-row">
-              <div class="field">
-                <label>Telephone de contact</label>
-                <input id="profile-phone" type="text" />
-              </div>
-              <div class="field">
-                <label>Email de contact</label>
-                <input id="profile-contact-email" type="email" />
-              </div>
-            </div>
-            <div class="config-box">
-              <div class="section-title" style="margin-bottom:8px">Infos recu / facture affichees</div>
-              <div class="hint">
-                QuickSellPay affiche deja le numero de recu, la date et l'heure de transaction,
-                la quantite et le prix unitaire sur les tickets mini. Ces informations seront
-                reprises avec l'identite boutique ci-dessus.
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
       <!-- AUTHENTICITÉ -->
       <div id="page-authenticity" style="display:none">
         <div class="topbar">
-          <div class="page-title">Verification de provenance du produit</div>
-          <a href="/verify" target="_blank" class="btn btn-ghost" style="text-decoration:none">↗ Page publique</a>
+          <div class="page-title">Codes d'Authenticité</div>
+          <a href="/verify" target="_blank" class="btn btn-ghost" style="text-decoration:none">↗ Page client</a>
         </div>
 
         <div class="stats-grid">
@@ -1578,19 +1368,10 @@
     function renderSession() {
       const cached = sessionState || JSON.parse(sessionStorage.getItem(SESSION_KEY) || 'null');
       const user = cached?.identifier || cached?.email || cached?.company_id || 'Non connecte';
-      const companyBits = [cached?.commercial_name || cached?.company_name || '', cached?.role || '', cached?.plan ? `plan ${cached.plan}` : '']
+      const companyBits = [cached?.company_name || '', cached?.role || '', cached?.plan ? `plan ${cached.plan}` : '']
         .filter(Boolean);
       document.getElementById('session-user').textContent = user;
-      document.getElementById('session-company').textContent = companyBits.join(' - ') || 'Aucune boutique';
-      const avatar = document.getElementById('session-avatar');
-      const companyName = cached?.commercial_name || cached?.company_name || cached?.company_id || 'Boutique';
-      const initials = companyName.split(/\s+/).filter(Boolean).slice(0, 2).map(part => part[0]?.toUpperCase() || '').join('') || 'BT';
-      if (cached?.company_logo_url) {
-        const src = cached.company_logo_url.startsWith('http') ? cached.company_logo_url : BASE_URL + cached.company_logo_url;
-        avatar.innerHTML = `<img src="${src}" alt="Logo boutique" />`;
-      } else {
-        avatar.textContent = initials;
-      }
+      document.getElementById('session-company').textContent = companyBits.join(' • ') || 'Aucune boutique';
     }
 
     function setSession(tokenPayload) {
@@ -1601,13 +1382,6 @@
         identifier: tokenPayload.identifier || document.getElementById('login-email')?.value?.trim() || '',
         company_id: tokenPayload.company_id || '',
         company_name: tokenPayload.company_name || '',
-        commercial_name: tokenPayload.commercial_name || '',
-        company_logo_url: tokenPayload.company_logo_url || '',
-        rccm: tokenPayload.rccm || '',
-        ifu: tokenPayload.ifu || '',
-        address: tokenPayload.address || '',
-        phone: tokenPayload.phone || '',
-        contact_email: tokenPayload.contact_email || '',
         role: tokenPayload.role || '',
         plan: tokenPayload.plan || '',
       };
@@ -1642,19 +1416,12 @@
       authMode = mode;
       document.getElementById('auth-title').textContent = mode === 'register' ? 'Inscription' : 'Connexion';
       document.getElementById('auth-subtitle').textContent = mode === 'register'
-        ? "Cree ta boutique QuickSellPay puis confirme le mot de passe administrateur."
+        ? "Cree ta boutique puis confirme le mot de passe administrateur."
         : "Entre le matricule de ta boutique pour ouvrir le dashboard web.";
       document.getElementById('auth-switch-label').textContent = mode === 'register'
         ? 'Déjà un compte ?'
         : 'Créer un compte';
       document.getElementById('register-company-field').classList.toggle('hidden', mode !== 'register');
-      document.getElementById('register-commercial-field').classList.toggle('hidden', mode !== 'register');
-      document.getElementById('register-logo-field').classList.toggle('hidden', mode !== 'register');
-      document.getElementById('register-rccm-field').classList.toggle('hidden', mode !== 'register');
-      document.getElementById('register-ifu-field').classList.toggle('hidden', mode !== 'register');
-      document.getElementById('register-address-field').classList.toggle('hidden', mode !== 'register');
-      document.getElementById('register-phone-field').classList.toggle('hidden', mode !== 'register');
-      document.getElementById('register-contact-email-field').classList.toggle('hidden', mode !== 'register');
       document.getElementById('register-confirm-field').classList.toggle('hidden', mode !== 'register');
       document.getElementById('login-password').autocomplete = mode === 'register' ? 'new-password' : 'current-password';
       document.getElementById('login-identifier-label').textContent = mode === 'register'
@@ -1679,26 +1446,6 @@
       document.getElementById('login-email').value = 'demo-shop';
       document.getElementById('login-password').value = 'AdminDemo123!';
       setLoginError('');
-    }
-
-    async function uploadCompanyLogo(file) {
-      const fd = new FormData();
-      fd.append('file', file);
-      const res = await fetch(BASE_URL + '/auth/company-logo', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${accessToken}` },
-        body: fd,
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.detail || 'Upload logo impossible');
-      sessionState = {
-        ...(sessionState || {}),
-        company_id: data.company_id || sessionState?.company_id || '',
-        company_name: data.company_name || sessionState?.company_name || '',
-        company_logo_url: data.company_logo_url || '',
-      };
-      persistSession();
-      renderSession();
     }
 
     async function refreshAccessToken() {
@@ -1733,57 +1480,6 @@
       return refreshPromise;
     }
 
-    async function loadCompanyProfile() {
-      try {
-        const data = await apiFetch('/auth/company-profile');
-        document.getElementById('profile-company-name').value = data.company_name || '';
-        document.getElementById('profile-commercial-name').value = data.commercial_name || '';
-        document.getElementById('profile-rccm').value = data.rccm || '';
-        document.getElementById('profile-ifu').value = data.ifu || '';
-        document.getElementById('profile-address').value = data.address || '';
-        document.getElementById('profile-phone').value = data.phone || '';
-        document.getElementById('profile-contact-email').value = data.contact_email || '';
-      } catch (e) {
-        toast(e.message || 'Chargement du profil impossible', 'err');
-      }
-    }
-
-    async function saveCompanyProfile() {
-      try {
-        const payload = {
-          company_name: document.getElementById('profile-company-name').value.trim(),
-          commercial_name: document.getElementById('profile-commercial-name').value.trim(),
-          rccm: document.getElementById('profile-rccm').value.trim(),
-          ifu: document.getElementById('profile-ifu').value.trim(),
-          address: document.getElementById('profile-address').value.trim(),
-          phone: document.getElementById('profile-phone').value.trim(),
-          contact_email: document.getElementById('profile-contact-email').value.trim(),
-        };
-        if (!payload.company_name) {
-          throw new Error('Le nom de la boutique est requis');
-        }
-        await apiFetch('/auth/company-profile', {
-          method: 'PATCH',
-          body: JSON.stringify(payload),
-        });
-        sessionState = {
-          ...(sessionState || {}),
-          company_name: payload.company_name,
-          commercial_name: payload.commercial_name,
-          rccm: payload.rccm,
-          ifu: payload.ifu,
-          address: payload.address,
-          phone: payload.phone,
-          contact_email: payload.contact_email,
-        };
-        persistSession();
-        renderSession();
-        toast('Informations boutique mises a jour', 'ok');
-      } catch (e) {
-        toast(e.message || 'Mise a jour impossible', 'err');
-      }
-    }
-
     async function login(event) {
       event.preventDefault();
       setLoginError('');
@@ -1793,22 +1489,9 @@
         const password = document.getElementById('login-password').value;
         const confirmPassword = document.getElementById('register-confirm-password').value;
         const companyName = document.getElementById('register-company').value.trim();
-        const commercialName = document.getElementById('register-commercial').value.trim();
-        const logoFile = document.getElementById('register-logo').files[0];
-        const rccm = document.getElementById('register-rccm').value.trim();
-        const ifu = document.getElementById('register-ifu').value.trim();
-        const address = document.getElementById('register-address').value.trim();
-        const phone = document.getElementById('register-phone').value.trim();
-        const contactEmail = document.getElementById('register-contact-email').value.trim();
         const isRegister = authMode === 'register';
         if (isRegister && !companyName) {
           throw new Error('Le nom de la boutique est requis');
-        }
-        if (isRegister && !commercialName) {
-          throw new Error('Le nom commercial est requis');
-        }
-        if (isRegister && (!rccm || !ifu || !address || !phone || !contactEmail)) {
-          throw new Error('Complete les informations legales de la boutique');
         }
         if (isRegister && password !== confirmPassword) {
           throw new Error('Les mots de passe ne correspondent pas');
@@ -1816,12 +1499,6 @@
         const payload = isRegister
           ? {
               company_name: companyName,
-              commercial_name: commercialName,
-              rccm,
-              ifu,
-              address,
-              phone,
-              contact_email: contactEmail,
               email: identifier,
               password,
               confirm_password: confirmPassword,
@@ -1839,9 +1516,6 @@
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.detail || (isRegister ? 'Inscription impossible' : 'Connexion impossible'));
         setSession({ ...data, email: isRegister ? identifier : '' });
-        if (isRegister && logoFile) {
-          await uploadCompanyLogo(logoFile);
-        }
         toast(isRegister ? 'Compte cree' : 'Connexion reussie', 'ok');
         refreshAll();
       } catch (e) {
@@ -1861,14 +1535,7 @@
         sessionState = {
           email: me.email,
           company_id: me.company_id,
-          company_name: me.company_name || sessionState?.company_name || me.company_id,
-          company_logo_url: me.company_logo_url || sessionState?.company_logo_url || '',
-          commercial_name: me.commercial_name || sessionState?.commercial_name || '',
-          rccm: me.rccm || sessionState?.rccm || '',
-          ifu: me.ifu || sessionState?.ifu || '',
-          address: me.address || sessionState?.address || '',
-          phone: me.phone || sessionState?.phone || '',
-          contact_email: me.contact_email || sessionState?.contact_email || '',
+          company_name: sessionState?.company_name || me.company_id,
           role: me.role,
           plan: sessionState?.plan || '',
         };
@@ -1886,14 +1553,7 @@
         sessionState = {
           email: me.email,
           company_id: me.company_id,
-          company_name: me.company_name || sessionState?.company_name || me.company_id,
-          company_logo_url: me.company_logo_url || sessionState?.company_logo_url || '',
-          commercial_name: me.commercial_name || sessionState?.commercial_name || '',
-          rccm: me.rccm || sessionState?.rccm || '',
-          ifu: me.ifu || sessionState?.ifu || '',
-          address: me.address || sessionState?.address || '',
-          phone: me.phone || sessionState?.phone || '',
-          contact_email: me.contact_email || sessionState?.contact_email || '',
+          company_name: sessionState?.company_name || me.company_id,
           role: me.role,
           plan: sessionState?.plan || '',
         };
@@ -1926,23 +1586,26 @@
 
     // ─── NAVIGATION ─────────────────────────────────────────
     function showPage(page) {
-      if (!accessToken) {
+      if (!accessToken && page !== 'config') {
         setAuthVisible(true);
         setApiStatus(false, 'Authentification requise');
         return;
       }
-      ['dashboard', 'products', 'sales', 'authenticity', 'profile', 'webhook', 'config'].forEach(p => {
-        const pageNode = document.getElementById('page-' + p);
-        const navNode = document.getElementById('nav-' + p);
-        if (!pageNode) return;
-        pageNode.style.display = p === page ? '' : 'none';
-        if (navNode) navNode.classList.toggle('active', p === page);
+      ['dashboard', 'products', 'sales', 'webhook', 'authenticity', 'config'].forEach(p => {
+        document.getElementById('page-' + p).style.display = p === page ? '' : 'none';
+        document.getElementById('nav-' + p).classList.toggle('active', p === page);
       });
       if (page === 'products') loadProducts();
       if (page === 'sales') loadSales();
       if (page === 'dashboard') loadDashboard();
+      if (page === 'webhook') populateWebhookSelect();
       if (page === 'authenticity') { loadAuthStats(); populateAuthSelects(); loadVerifLogs(); }
-      if (page === 'profile') loadCompanyProfile();
+      if (page === 'config') {
+        document.getElementById('cfg-url').value = BASE_URL;
+        document.getElementById('cfg-session-mode').value = 'JWT stocke en sessionStorage';
+        document.getElementById('api-doc-block').textContent =
+          `Docs Swagger : ${BASE_URL}/docs\nDocs ReDoc   : ${BASE_URL}/redoc\nHealth       : ${BASE_URL}/health`;
+      }
     }
 
     // ─── API HELPERS ─────────────────────────────────────────
@@ -1983,10 +1646,7 @@
       }
       if (!res.ok) {
         const err = await res.json().catch(() => ({ detail: res.statusText }));
-        const detail = Array.isArray(err.detail)
-          ? err.detail.map((item) => item?.msg || JSON.stringify(item)).join(' | ')
-          : (err.detail || 'Erreur API');
-        const apiErr = new Error(detail);
+        const apiErr = new Error(err.detail || 'Erreur API');
         apiErr.status = res.status;
         throw apiErr;
       }
@@ -2396,7 +2056,7 @@ async function generateAuthCodes() {
         console.log(logs[0]); // dans loadVerifLogs(), après avoir reçu les logs
         const tbody = document.getElementById('auth-logs-tbody');
         if (!logs.length) { tbody.innerHTML = '<tr><td colspan="7" class="empty">Aucune vérification</td></tr>'; return; }
-        tbody.innerHTML = logs.map(l => `<tr class="${!l.is_fraud && l.is_valid ? 'verification-row-ok' : ''}">
+        tbody.innerHTML = logs.map(l => `<tr>
       <td style="font-family:var(--font-mono);font-size:0.78rem;letter-spacing:0.1em">${l.code || l.auth_code || l.code_value || '—'}</td>
       <td>${l.product_name || '—'}</td>
 <td><span class="badge ${l.is_fraud ? 'low' : (l.is_valid ? 'ok' : 'warn')}">${l.is_fraud ? 'Fraude' : (l.is_valid ? '✓ Valide' : '✗ Échec')}</span></td>
@@ -2427,23 +2087,6 @@ async function generateAuthCodes() {
     // ─── INIT ────────────────────────────────────────────────
     document.getElementById('webhook-url').value = BASE_URL + '/api/webhook/sale';
     document.getElementById('login-form').addEventListener('submit', login);
-    document.getElementById('register-logo').addEventListener('change', (event) => {
-      const file = event.target.files?.[0];
-      const preview = document.getElementById('register-logo-preview');
-      const companyName = document.getElementById('register-commercial').value.trim() || document.getElementById('register-company').value.trim();
-      const initials = (companyName.split(/\s+/).filter(Boolean).slice(0, 2).map(part => part[0]?.toUpperCase() || '').join('')) || 'LG';
-      if (file) {
-        preview.innerHTML = `<img src="${URL.createObjectURL(file)}" alt="Logo" />`;
-      } else {
-        preview.textContent = initials;
-      }
-    });
-    ['register-company', 'register-commercial'].forEach((id) => document.getElementById(id).addEventListener('input', () => {
-      const preview = document.getElementById('register-logo-preview');
-      if (document.getElementById('register-logo').files?.length) return;
-      const companyName = document.getElementById('register-commercial').value.trim() || document.getElementById('register-company').value.trim();
-      preview.textContent = (companyName.split(/\s+/).filter(Boolean).slice(0, 2).map(part => part[0]?.toUpperCase() || '').join('')) || 'LG';
-    }));
     setAuthMode('login');
     renderSession();
 

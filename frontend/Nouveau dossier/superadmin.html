@@ -3,34 +3,31 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>QuickSellPay Superadmin</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com"/>
-  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet"/>
+  <title>ERP-SYS Superadmin</title>
   <style>
     :root {
-      --bg: #f4f7fb;
-      --panel: #ffffff;
-      --panel-2: #f8fbff;
-      --line: #d7e2f2;
-      --text: #0f172a;
-      --muted: #64748b;
-      --green: #12b981;
-      --yellow: #f59e0b;
-      --red: #d64545;
-      --blue: #1565d8;
-      --grad: linear-gradient(135deg, #0f172a, #1565d8, #22c1c3);
-      --shadow: 0 18px 40px rgba(15, 23, 42, 0.08);
+      --bg: #0b0d13;
+      --panel: #111521;
+      --panel-2: #161c2b;
+      --line: #25304a;
+      --text: #f4f7fb;
+      --muted: #95a4c7;
+      --green: #4ef0a7;
+      --yellow: #ffd54d;
+      --red: #ff6b6b;
+      --blue: #65a7ff;
+      --shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
       --radius: 18px;
-      --font-head: "Space Grotesk", sans-serif;
-      --font-body: "Manrope", sans-serif;
+      --font-head: "Segoe UI", sans-serif;
+      --font-body: "Consolas", "Courier New", monospace;
     }
 
     * { box-sizing: border-box; }
     body {
       margin: 0;
       background:
-        radial-gradient(circle at top right, rgba(21, 101, 216, 0.12), transparent 28%),
-        radial-gradient(circle at bottom left, rgba(18, 185, 129, 0.08), transparent 24%),
+        radial-gradient(circle at top right, rgba(101, 167, 255, 0.12), transparent 28%),
+        radial-gradient(circle at bottom left, rgba(78, 240, 167, 0.08), transparent 24%),
         var(--bg);
       color: var(--text);
       font-family: var(--font-body);
@@ -47,7 +44,7 @@
     .sidebar {
       padding: 28px 22px;
       border-right: 1px solid var(--line);
-      background: rgba(255, 255, 255, 0.88);
+      background: rgba(8, 11, 18, 0.82);
       backdrop-filter: blur(16px);
     }
 
@@ -57,12 +54,7 @@
       margin-bottom: 20px;
     }
 
-    .brand .accent {
-      background: var(--grad);
-      -webkit-background-clip: text;
-      background-clip: text;
-      color: transparent;
-    }
+    .brand .accent { color: var(--green); }
 
     .session-card,
     .guide-card {
@@ -108,8 +100,8 @@
     }
 
     .btn:hover { border-color: var(--green); color: var(--green); }
-    .btn.primary { background: var(--grad); border-color: #1565d8; color: #fff; }
-    .btn.primary:hover { color: #fff; filter: brightness(1.07); }
+    .btn.primary { background: linear-gradient(135deg, #1e2d47, #18351d); border-color: #2d8c64; }
+    .btn.primary:hover { color: var(--text); filter: brightness(1.07); }
     .btn.danger:hover { border-color: var(--red); color: var(--red); }
 
     .content {
@@ -295,7 +287,7 @@
 
     .login-card {
       width: min(480px, 100%);
-      background: rgba(255, 255, 255, 0.96);
+      background: rgba(13, 17, 27, 0.95);
       border: 1px solid var(--line);
       border-radius: 24px;
       padding: 28px;
@@ -372,7 +364,7 @@
 
   <main class="shell" id="app-shell">
     <aside class="sidebar">
-      <div class="brand"><span class="accent">Quick</span>SellPay</div>
+      <div class="brand"><span class="accent">ERP</span>-SYS</div>
       <div class="session-card">
         <h3>Session</h3>
         <div class="kv">
@@ -462,34 +454,6 @@
               <li><code>STORAGE_ACCESS_KEY_ID</code> et <code>STORAGE_SECRET_ACCESS_KEY</code>.</li>
               <li><code>STORAGE_PUBLIC_BASE_URL</code> pour générer des URLs lisibles par web/mobile.</li>
               <li>Configurer le CORS du bucket et l’accès public minimal aux objets image.</li>
-            </ul>
-          </article>
-        </div>
-      </section>
-
-      <section class="panel">
-        <div class="panel-head">
-          <h2>Webhook et Config API</h2>
-          <div class="hint">Ces reglages ont ete centralises ici pour le superadmin.</div>
-        </div>
-        <div class="config-grid">
-          <article class="config-card">
-            <h3>Webhook QuickSellPay</h3>
-            <div class="hint">Endpoint mobile/webhook a exposer pour les ventes :</div>
-            <ul>
-              <li><code>/api/webhook/sale</code> pour recevoir les ventes caisse.</li>
-              <li><code>/billing/webhook</code> pour Stripe.</li>
-              <li>Verifier les secrets, les firewalls et le HTTPS public.</li>
-            </ul>
-          </article>
-          <article class="config-card">
-            <h3>Configuration API</h3>
-            <div class="hint">Base URL recommandee pour web et mobile :</div>
-            <ul>
-              <li><code>/health</code> pour tester la disponibilite.</li>
-              <li><code>/docs</code> pour Swagger.</li>
-              <li><code>/redoc</code> pour la documentation Redoc.</li>
-              <li>Centraliser l'URL backend pour toutes les boutiques avant diffusion.</li>
             </ul>
           </article>
         </div>
