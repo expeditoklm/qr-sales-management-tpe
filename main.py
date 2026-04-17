@@ -548,6 +548,23 @@ def reset_password(payload: ResetPasswordRequest):
     return ActionResponse(message="Mot de passe réinitialisé avec succès.")
 
 
+@app.post("/auth/change-password", response_model=ActionResponse, tags=["Auth"])
+def change_password(
+    payload: ChangePasswordRequest,
+    current: Annotated[TokenData, Depends(get_current_user)],
+):
+    _ensure_password_confirmation(payload.password, payload.confirm_password)
+    user = db.get_user_by_id(current.user_id)
+    if not user:
+        raise HTTPException(404, "Utilisateur introuvable")
+    if not verify_password(payload.current_password, user["password_hash"]):
+        raise HTTPException(400, "Ancien mot de passe incorrect")
+    if payload.current_password == payload.password:
+        raise HTTPException(400, "Le nouveau mot de passe doit etre different de l'ancien")
+    db.update_user_password(current.user_id, hash_password(payload.password))
+    return ActionResponse(message="Mot de passe mis a jour avec succes.")
+
+
 @app.post("/auth/refresh", response_model=TokenResponse, tags=["Auth"])
 def refresh(payload: RefreshRequest):
     """Renouvelle l'access token via le refresh token."""

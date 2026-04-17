@@ -274,6 +274,67 @@
     color: #3a4058;
     padding-top: 8px;
   }
+  @media (max-width: 560px) {
+    body {
+      padding: 0 12px 28px;
+    }
+    header {
+      padding: 18px 0 14px;
+    }
+    .card,
+    .intro-modal {
+      padding: 20px 16px;
+      border-radius: 18px;
+    }
+    .card-title {
+      font-size: 1.05rem;
+    }
+    .card-sub,
+    .intro-modal p,
+    .intro-modal li,
+    .result-detail,
+    .consent-box,
+    .company-box,
+    .legal-links {
+      font-size: 0.72rem;
+    }
+    #codeInput {
+      font-size: 1.18rem;
+      letter-spacing: 0.12em;
+      padding: 16px 46px 16px 14px;
+    }
+    .product-info {
+      padding: 16px;
+    }
+    .intro-modal h1 {
+      font-size: 1.35rem;
+    }
+    .intro-actions {
+      flex-direction: column;
+    }
+    .intro-actions button,
+    #continueBtn,
+    #submitVerifyBtn,
+    .try-again,
+    .btn-ghost {
+      width: 100%;
+    }
+  }
+  @media (max-width: 360px) {
+    #codeInput {
+      font-size: 1rem;
+      letter-spacing: 0.09em;
+    }
+    .logo-text {
+      font-size: 0.92rem;
+    }
+    .status-badge {
+      top: 8px;
+      left: 8px;
+      padding: 4px 8px;
+      font-size: 0.62rem;
+    }
+  }
 </style>
 </head>
 <body>

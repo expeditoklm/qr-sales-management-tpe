@@ -80,32 +80,6 @@
       color: var(--text);
     }
 
-    .brand-stack {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      padding: 0 20px 28px;
-    }
-
-    .brand-stack.compact {
-      padding: 0;
-      margin-bottom: 18px;
-    }
-
-    .brand-mark {
-      width: 42px;
-      height: 42px;
-      border-radius: 14px;
-      object-fit: cover;
-      box-shadow: 0 10px 24px rgba(15, 23, 42, 0.16);
-      flex-shrink: 0;
-    }
-
-    .brand-stack .logo {
-      padding: 0;
-      margin: 0;
-    }
-
     .nav-item {
       padding: 10px 20px;
       cursor: pointer;
@@ -882,6 +856,90 @@
       object-fit: cover;
     }
 
+    .profile-hero {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      padding: 20px 22px;
+      margin-bottom: 18px;
+      background: linear-gradient(135deg, rgba(15, 118, 110, 0.08), rgba(94, 234, 212, 0.12));
+      border: 1px solid var(--border);
+      border-radius: 20px;
+    }
+
+    .profile-hero-main {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      min-width: 0;
+    }
+
+    .profile-hero-avatar {
+      width: 72px;
+      height: 72px;
+      border-radius: 22px;
+      overflow: hidden;
+      display: grid;
+      place-items: center;
+      flex-shrink: 0;
+      background: var(--grad);
+      color: #fff;
+      font-family: var(--font-head);
+      font-size: 1.25rem;
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      box-shadow: 0 16px 30px rgba(15, 118, 110, 0.18);
+    }
+
+    .profile-hero-avatar img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .profile-hero-kicker {
+      color: var(--muted);
+      font-size: 0.68rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+
+    .profile-hero-title {
+      font-family: var(--font-head);
+      font-size: 1.4rem;
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      line-height: 1.05;
+    }
+
+    .profile-hero-sub {
+      color: var(--muted);
+      font-size: 0.78rem;
+      margin-top: 6px;
+      line-height: 1.6;
+    }
+
+    .profile-upload-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .profile-stack {
+      display: grid;
+      gap: 18px;
+    }
+
+    .hint {
+      color: var(--muted);
+      font-size: 0.76rem;
+      line-height: 1.7;
+    }
+
     .session-card.show {
       display: block;
     }
@@ -922,6 +980,21 @@
         border-right: 0;
         border-bottom: 1px solid var(--border);
       }
+
+      .profile-hero {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+
+      .profile-upload-actions {
+        justify-content: flex-start;
+      }
+    }
+
+    @media (max-width: 640px) {
+      .field-row {
+        grid-template-columns: 1fr;
+      }
     }
   </style>
 </head>
@@ -930,10 +1003,7 @@
   <div class="auth-screen" id="auth-screen">
     <div class="auth-panel">
       <div class="auth-copy">
-        <div class="brand-stack compact">
-          <img class="brand-mark" src="/quicksellpay-logo.png" alt="QuickSellPay logo" />
-          <div class="logo">Quick<span>SellPay</span></div>
-        </div>
+        <div class="logo" style="padding:0;margin-bottom:18px">Quick<span>SellPay</span></div>
         <div class="auth-kicker">Acces securise</div>
           <div class="auth-title">Connecte ton espace QuickSellPay web avec le meme compte que sur mobile.</div>
         <div class="auth-text">
@@ -1028,10 +1098,7 @@
   <div class="shell">
     <!-- SIDEBAR -->
     <aside class="sidebar">
-      <div class="brand-stack">
-        <img class="brand-mark" src="/quicksellpay-logo.png" alt="QuickSellPay logo" />
-        <div class="logo">Quick<span>SellPay</span></div>
-      </div>
+      <div class="logo">Quick<span>SellPay</span></div>
       <div class="session-card" id="session-card">
         <div class="session-brand">
           <div class="session-brand-avatar" id="session-avatar">BT</div>
@@ -1280,52 +1347,98 @@
           <div class="page-title">Informations boutique</div>
           <div class="api-badge">QuickSellPay Profile</div>
         </div>
-        <div class="section">
-          <div class="section-header">
-            <div class="section-title">Identite legale et commerciale</div>
-            <button class="btn btn-primary" onclick="saveCompanyProfile()">Sauvegarder</button>
+        <div class="profile-stack">
+          <div class="profile-hero">
+            <div class="profile-hero-main">
+              <div class="profile-hero-avatar" id="profile-hero-avatar">BT</div>
+              <div>
+                <div class="profile-hero-kicker">Boutique active</div>
+                <div class="profile-hero-title" id="profile-hero-name">QuickSellPay</div>
+                <div class="profile-hero-sub" id="profile-hero-meta">Mettez a jour votre identite commerciale, votre logo et vos informations de facturation.</div>
+              </div>
+            </div>
+            <div class="profile-upload-actions">
+              <input id="profile-logo-input" type="file" accept="image/*" style="display:none" onchange="handleProfileLogoSelected(event)" />
+              <button class="btn btn-ghost" type="button" onclick="document.getElementById('profile-logo-input').click()">Changer l'image boutique</button>
+            </div>
           </div>
-          <div style="padding:20px">
-            <div class="field-row">
-              <div class="field">
-                <label>Nom de la boutique</label>
-                <input id="profile-company-name" type="text" />
+          <div class="section">
+            <div class="section-header">
+              <div class="section-title">Identite legale et commerciale</div>
+              <button class="btn btn-primary" onclick="saveCompanyProfile()">Sauvegarder</button>
+            </div>
+            <div style="padding:20px">
+              <div class="field-row">
+                <div class="field">
+                  <label>Nom de la boutique</label>
+                  <input id="profile-company-name" type="text" />
+                </div>
+                <div class="field">
+                  <label>Nom commercial</label>
+                  <input id="profile-commercial-name" type="text" />
+                </div>
+              </div>
+              <div class="field-row">
+                <div class="field">
+                  <label>Numero RCCM</label>
+                  <input id="profile-rccm" type="text" />
+                </div>
+                <div class="field">
+                  <label>IFU</label>
+                  <input id="profile-ifu" type="text" />
+                </div>
               </div>
               <div class="field">
-                <label>Nom commercial</label>
-                <input id="profile-commercial-name" type="text" />
+                <label>Adresse complete du siege ou du point de vente</label>
+                <textarea id="profile-address" rows="3"></textarea>
+              </div>
+              <div class="field-row">
+                <div class="field">
+                  <label>Telephone de contact</label>
+                  <input id="profile-phone" type="text" />
+                </div>
+                <div class="field">
+                  <label>Email de contact</label>
+                  <input id="profile-contact-email" type="email" />
+                </div>
+              </div>
+              <div class="config-box">
+                <div class="section-title" style="margin-bottom:8px">Infos recu / facture affichees</div>
+                <div class="hint">
+                  QuickSellPay affiche deja le numero de recu, la date et l'heure de transaction,
+                  la quantite et le prix unitaire sur les tickets mini. Ces informations seront
+                  reprises avec l'identite boutique ci-dessus.
+                </div>
               </div>
             </div>
-            <div class="field-row">
-              <div class="field">
-                <label>Numero RCCM</label>
-                <input id="profile-rccm" type="text" />
-              </div>
-              <div class="field">
-                <label>IFU</label>
-                <input id="profile-ifu" type="text" />
-              </div>
+          </div>
+          <div class="section">
+            <div class="section-header">
+              <div class="section-title">Securite du compte</div>
+              <button class="btn btn-primary" type="button" onclick="changeCompanyPassword()">Modifier le mot de passe</button>
             </div>
-            <div class="field">
-              <label>Adresse complete du siege ou du point de vente</label>
-              <textarea id="profile-address" rows="3"></textarea>
-            </div>
-            <div class="field-row">
-              <div class="field">
-                <label>Telephone de contact</label>
-                <input id="profile-phone" type="text" />
+            <div style="padding:20px">
+              <div class="field-row">
+                <div class="field">
+                  <label>Ancien mot de passe</label>
+                  <input id="profile-current-password" type="password" autocomplete="current-password" />
+                </div>
+                <div class="field">
+                  <label>Nouveau mot de passe</label>
+                  <input id="profile-new-password" type="password" autocomplete="new-password" />
+                </div>
               </div>
-              <div class="field">
-                <label>Email de contact</label>
-                <input id="profile-contact-email" type="email" />
-              </div>
-            </div>
-            <div class="config-box">
-              <div class="section-title" style="margin-bottom:8px">Infos recu / facture affichees</div>
-              <div class="hint">
-                QuickSellPay affiche deja le numero de recu, la date et l'heure de transaction,
-                la quantite et le prix unitaire sur les tickets mini. Ces informations seront
-                reprises avec l'identite boutique ci-dessus.
+              <div class="field-row">
+                <div class="field">
+                  <label>Confirmer le nouveau mot de passe</label>
+                  <input id="profile-confirm-password" type="password" autocomplete="new-password" />
+                </div>
+                <div class="config-box">
+                  <div class="section-title" style="margin-bottom:8px">Regle de securite</div>
+                  <div class="hint">
+                    Saisissez l'ancien mot de passe, puis un nouveau mot de passe avec au moins une majuscule et un chiffre avant de confirmer.
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -1591,6 +1704,25 @@
       } else {
         avatar.textContent = initials;
       }
+      renderProfileHero(cached);
+    }
+
+    function renderProfileHero(cached = sessionState) {
+      const heroAvatar = document.getElementById('profile-hero-avatar');
+      const heroName = document.getElementById('profile-hero-name');
+      const heroMeta = document.getElementById('profile-hero-meta');
+      if (!heroAvatar || !heroName || !heroMeta) return;
+      const companyName = cached?.commercial_name || cached?.company_name || cached?.company_id || 'QuickSellPay';
+      const initials = companyName.split(/\s+/).filter(Boolean).slice(0, 2).map(part => part[0]?.toUpperCase() || '').join('') || 'BT';
+      heroName.textContent = companyName;
+      const metaBits = [cached?.company_name || '', cached?.phone || '', cached?.contact_email || ''].filter(Boolean);
+      heroMeta.textContent = metaBits.join(' · ') || 'Ajoutez votre logo, votre identite commerciale et vos informations de contact.';
+      if (cached?.company_logo_url) {
+        const src = cached.company_logo_url.startsWith('http') ? cached.company_logo_url : BASE_URL + cached.company_logo_url;
+        heroAvatar.innerHTML = `<img src="${src}" alt="Logo boutique" />`;
+      } else {
+        heroAvatar.textContent = initials;
+      }
     }
 
     function setSession(tokenPayload) {
@@ -1699,6 +1831,8 @@
       };
       persistSession();
       renderSession();
+      renderProfileHero(sessionState);
+      toast('Image boutique mise a jour', 'ok');
     }
 
     async function refreshAccessToken() {
@@ -1743,6 +1877,21 @@
         document.getElementById('profile-address').value = data.address || '';
         document.getElementById('profile-phone').value = data.phone || '';
         document.getElementById('profile-contact-email').value = data.contact_email || '';
+        sessionState = {
+          ...(sessionState || {}),
+          company_id: data.company_id || sessionState?.company_id || '',
+          company_name: data.company_name || '',
+          commercial_name: data.commercial_name || '',
+          company_logo_url: data.company_logo_url || sessionState?.company_logo_url || '',
+          rccm: data.rccm || '',
+          ifu: data.ifu || '',
+          address: data.address || '',
+          phone: data.phone || '',
+          contact_email: data.contact_email || '',
+        };
+        persistSession();
+        renderSession();
+        renderProfileHero(sessionState);
       } catch (e) {
         toast(e.message || 'Chargement du profil impossible', 'err');
       }
@@ -1778,9 +1927,50 @@
         };
         persistSession();
         renderSession();
+        renderProfileHero(sessionState);
         toast('Informations boutique mises a jour', 'ok');
       } catch (e) {
         toast(e.message || 'Mise a jour impossible', 'err');
+      }
+    }
+
+    async function handleProfileLogoSelected(event) {
+      const file = event?.target?.files?.[0];
+      if (!file) return;
+      try {
+        await uploadCompanyLogo(file);
+      } catch (e) {
+        toast(e.message || 'Mise a jour du logo impossible', 'err');
+      } finally {
+        event.target.value = '';
+      }
+    }
+
+    async function changeCompanyPassword() {
+      try {
+        const currentPassword = document.getElementById('profile-current-password').value;
+        const password = document.getElementById('profile-new-password').value;
+        const confirmPassword = document.getElementById('profile-confirm-password').value;
+        if (!currentPassword || !password || !confirmPassword) {
+          throw new Error('Remplissez les trois champs de mot de passe');
+        }
+        if (password !== confirmPassword) {
+          throw new Error('Le nouveau mot de passe et sa confirmation ne correspondent pas');
+        }
+        await apiFetch('/auth/change-password', {
+          method: 'POST',
+          body: JSON.stringify({
+            current_password: currentPassword,
+            password,
+            confirm_password: confirmPassword,
+          }),
+        });
+        document.getElementById('profile-current-password').value = '';
+        document.getElementById('profile-new-password').value = '';
+        document.getElementById('profile-confirm-password').value = '';
+        toast('Mot de passe boutique mis a jour', 'ok');
+      } catch (e) {
+        toast(e.message || 'Modification du mot de passe impossible', 'err');
       }
     }
 
