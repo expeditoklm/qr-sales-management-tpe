@@ -1,0 +1,13 @@
+.git
+.gitignore
+.env
+.python-version
+venv
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+*.db
+data
+backups
+static/images
