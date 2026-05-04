@@ -1655,7 +1655,34 @@
       window.location.protocol.startsWith('http') && window.location.origin !== 'null'
         ? window.location.origin
         : 'http://localhost:8000';
-    let BASE_URL = localStorage.getItem('erp_url') || DEFAULT_BASE_URL;
+
+    function normalizeBaseUrl(rawValue) {
+      const fallback = DEFAULT_BASE_URL;
+      if (!rawValue) return fallback;
+      try {
+        const parsed = new URL(rawValue, fallback);
+        if (
+          window.location.hostname &&
+          parsed.hostname === window.location.hostname &&
+          window.location.protocol === 'https:'
+        ) {
+          parsed.protocol = 'https:';
+        }
+        if (
+          window.location.hostname &&
+          parsed.hostname === window.location.hostname &&
+          parsed.pathname === '/'
+        ) {
+          return window.location.origin;
+        }
+        return parsed.toString().replace(/\/$/, '');
+      } catch (_) {
+        return fallback;
+      }
+    }
+
+    let BASE_URL = normalizeBaseUrl(localStorage.getItem('erp_url'));
+    localStorage.setItem('erp_url', BASE_URL);
     const ACCESS_TOKEN_KEY = 'erp_access_token_v2';
     const REFRESH_TOKEN_KEY = 'erp_refresh_token_v2';
     const SESSION_KEY = 'erp_session_v2';

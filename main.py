@@ -234,7 +234,10 @@ def _send_reset_password_email(user: dict) -> dict:
 @app.get("/favicon.ico", include_in_schema=False)
 def favicon():
     p = FRONTEND_DIR / "favicon.ico"
-    return FileResponse(p) if p.exists() else HTTPException(404)
+    if p.exists():
+        return FileResponse(p)
+    raise HTTPException(status_code=404, detail="favicon not found")
+
 
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
 def page_dashboard():
