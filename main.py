@@ -589,6 +589,11 @@ def invite_user(
     """Invite un employé dans la boutique (admin requis)."""
     check_user_quota(current.company_id)
     token = create_invite_token(current.company_id, payload.email, payload.role)
+    _audit(
+        current.company_id, current, "user_invited", "user_invite",
+        object_label=payload.email,
+        details={"email": payload.email, "role": payload.role},
+    )
     # En prod : envoyer par email. Ici on retourne le lien.
     return {
         "invite_token": token,
@@ -723,7 +728,39 @@ def deactivate_user(
     if not user or user["company_id"] != current.company_id:
         raise HTTPException(404, "Utilisateur introuvable")
     db.deactivate_user(user_id)
+    _audit(
+        current.company_id, current, "user_deactivated", "user",
+        object_id=user_id, object_label=user["email"],
+        details={"target_email": user["email"], "target_role": user["role"]},
+    )
     return {"message": "Utilisateur désactivé"}
+
+@app.patch("/auth/users/{user_id}/activate", tags=["Auth"])
+def activate_user(
+    user_id: str,
+    current: Annotated[TokenData, Depends(get_admin_user)],
+):
+    user = db.get_user_by_id(user_id)
+    if not user or user["company_id"] != current.company_id:
+        raise HTTPException(404, "Utilisateur introuvable")
+    if user["is_active"]:
+        return {"message": "Utilisateur déjà actif"}
+    check_user_quota(current.company_id)
+    db.activate_user(user_id)
+    _audit(
+        current.company_id, current, "user_activated", "user",
+        object_id=user_id, object_label=user["email"],
+        details={"target_email": user["email"], "target_role": user["role"]},
+    )
+    return {"message": "Utilisateur activé"}
+
+@app.get("/auth/audit-logs", response_model=List[AuditLog], tags=["Auth"])
+def audit_logs(
+    current: Annotated[TokenData, Depends(get_admin_user)],
+    user_id: Optional[str] = Query(default=None),
+    limit: int = Query(default=100, ge=1, le=500),
+):
+    return db.list_audit_logs(current.company_id, user_id=user_id, limit=limit)
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -984,6 +1021,37 @@ def _enrich(p: dict, company_id: str) -> dict:
     p["company_id"] = company_id
     return p
 
+def _actor_info(current: TokenData) -> dict:
+    user = db.get_user_by_id(current.user_id) if current.user_id != "legacy" else None
+    return {
+        "user_id": current.user_id if current.user_id != "legacy" else None,
+        "user_email": user["email"] if user else "legacy-api-key",
+        "user_role": current.role,
+    }
+
+def _audit(
+    company_id: str,
+    current: TokenData,
+    action: str,
+    object_type: str,
+    object_id: str | None = None,
+    object_label: str | None = None,
+    details: dict | None = None,
+):
+    actor = _actor_info(current)
+    db.insert_audit_log(company_id, {
+        "id": str(uuid.uuid4()),
+        "user_id": actor["user_id"],
+        "user_email": actor["user_email"],
+        "user_role": actor["user_role"],
+        "action": action,
+        "object_type": object_type,
+        "object_id": object_id,
+        "object_label": object_label,
+        "details": details or {},
+        "created_at": datetime.now(tz=timezone.utc).isoformat(),
+    })
+
 
 @app.get("/api/products", response_model=List[Product], tags=["Produits"])
 def list_products(
@@ -1031,6 +1099,11 @@ def create_product(
         "updated_at": now,
     }
     db.insert_product(current.company_id, p)
+    _audit(
+        current.company_id, current, "product_created", "product",
+        object_id=pid, object_label=p["name"],
+        details={"sku": p["sku"], "price": p["price"], "stock": p["stock"]},
+    )
     return _enrich(p, current.company_id)
 
 
@@ -1050,6 +1123,11 @@ def update_product(
             raise HTTPException(409, "Un produit avec ce libellé existe déjà")
     p["updated_at"] = datetime.now().isoformat()
     db.update_product_full(current.company_id, p)
+    _audit(
+        current.company_id, current, "product_updated", "product",
+        object_id=product_id, object_label=p["name"],
+        details=payload.model_dump(exclude_unset=True),
+    )
     return _enrich(p, current.company_id)
 
 
@@ -1058,9 +1136,15 @@ def delete_product(
     product_id: str,
     current: Annotated[TokenData, Depends(get_current_user_or_apikey)],
 ):
-    if not db.get_product(current.company_id, product_id):
+    p = db.get_product(current.company_id, product_id)
+    if not p:
         raise HTTPException(404, "Produit introuvable")
     db.delete_product(current.company_id, product_id)
+    _audit(
+        current.company_id, current, "product_deleted", "product",
+        object_id=product_id, object_label=p["name"],
+        details={"sku": p.get("sku")},
+    )
     return {"message": "Produit supprimé"}
 
 
@@ -1080,6 +1164,11 @@ def update_stock(
     db.update_stock(current.company_id, product_id, new_stock, now)
     p["stock"]      = new_stock
     p["updated_at"] = now
+    _audit(
+        current.company_id, current, "stock_updated", "product",
+        object_id=product_id, object_label=p["name"],
+        details={"delta": payload.delta, "reason": payload.reason, "new_stock": new_stock},
+    )
     return _enrich(p, current.company_id)
 
 
@@ -1122,7 +1211,13 @@ async def update_product_image(
             payload.reference_image_hash or p.get("reference_image_hash"),
             now,
         )
-    return _enrich(db.get_product(current.company_id, product_id), current.company_id)
+    updated = db.get_product(current.company_id, product_id)
+    _audit(
+        current.company_id, current, "product_image_updated", "product",
+        object_id=product_id, object_label=updated["name"] if updated else p["name"],
+        details={"image_url": updated.get("image_url") if updated else None},
+    )
+    return _enrich(updated, current.company_id)
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -1133,8 +1228,12 @@ async def update_product_image(
 def list_sales(
     current: Annotated[TokenData, Depends(get_current_user_or_apikey)],
     period: str = Query(default="all"),
+    user_id: Optional[str] = Query(default=None),
 ):
-    sales = db.all_sales(current.company_id)
+    selected_user_id = user_id if current.is_admin else current.user_id
+    if selected_user_id == "legacy":
+        selected_user_id = None
+    sales = db.all_sales(current.company_id, created_by_user_id=selected_user_id)
     if period == "all":
         return sales
 
@@ -1169,6 +1268,8 @@ def get_sale(
     s = db.get_sale(current.company_id, sale_id)
     if not s:
         raise HTTPException(404, "Vente introuvable")
+    if not current.is_admin and s.get("created_by_user_id") != current.user_id:
+        raise HTTPException(403, "Accès refusé à cette vente")
     return s
 
 
@@ -1197,15 +1298,24 @@ def create_sale(
 
     sid = str(uuid.uuid4())
     now = datetime.now().isoformat()
+    actor = _actor_info(current)
     sale = {
         "id": sid,
         "reference": f"VTE-{datetime.now().strftime('%Y%m%d')}-{sid[:6].upper()}",
         "source": payload.source or "dashboard",
         "items": items_ok, "total": total,
         "customer": payload.customer, "note": payload.note,
+        "created_by_user_id": actor["user_id"],
+        "created_by_email": actor["user_email"],
+        "created_by_role": actor["user_role"],
         "created_at": now,
     }
     db.insert_sale(cid, sale)
+    _audit(
+        cid, current, "sale_created", "sale",
+        object_id=sid, object_label=sale["reference"],
+        details={"total": total, "items_count": len(items_ok), "source": sale["source"]},
+    )
     return sale
 
 
@@ -1245,13 +1355,25 @@ def webhook_sale(
 
     sid = str(uuid.uuid4())
     now = datetime.now().isoformat()
+    actor = _actor_info(current)
+    reference = payload.sale_reference or f"WH-{sid[:8].upper()}"
+    total = total_calc if total_calc > 0 else (payload.total or 0)
     db.insert_sale(cid, {
         "id": sid,
-        "reference": payload.sale_reference or f"WH-{sid[:8].upper()}",
+        "reference": reference,
         "source": "flutter_pos", "items": items_enriched,
-        "total": total_calc if total_calc > 0 else (payload.total or 0),
-        "customer": None, "note": None, "created_at": now,
+        "total": total,
+        "customer": None, "note": None,
+        "created_by_user_id": actor["user_id"],
+        "created_by_email": actor["user_email"],
+        "created_by_role": actor["user_role"],
+        "created_at": now,
     })
+    _audit(
+        cid, current, "sale_created", "sale",
+        object_id=sid, object_label=reference,
+        details={"total": total, "items_count": len(items_enriched), "source": "flutter_pos", "errors": errors},
+    )
     return {"success": len(errors) == 0, "sale_id": sid,
             "processed": processed, "errors": errors, "timestamp": now}
 
@@ -1277,7 +1399,8 @@ def generate_codes(
     current: Annotated[TokenData, Depends(get_current_user_or_apikey)],
 ):
     cid = current.company_id
-    if not db.get_product(cid, product_id):
+    product = db.get_product(cid, product_id)
+    if not product:
         raise HTTPException(404, "Produit introuvable")
     now, created = datetime.now().isoformat(), []
     for _ in range(payload.quantity):
@@ -1287,6 +1410,11 @@ def generate_codes(
         }
         db.insert_auth_code(cid, entry)
         created.append(entry)
+    _audit(
+        cid, current, "auth_codes_generated", "product",
+        object_id=product_id, object_label=product["name"],
+        details={"quantity": payload.quantity},
+    )
     return created
 
 

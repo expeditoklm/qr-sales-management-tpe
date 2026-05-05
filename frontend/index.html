@@ -934,6 +934,84 @@
       gap: 18px;
     }
 
+    .team-grid {
+      display: grid;
+      grid-template-columns: minmax(280px, 0.9fr) minmax(0, 1.6fr);
+      gap: 18px;
+      align-items: start;
+    }
+
+    .quota-strip {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(15, 118, 110, 0.04);
+    }
+
+    .quota-tile {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px;
+    }
+
+    .quota-label {
+      color: var(--muted);
+      font-size: 0.66rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 6px;
+    }
+
+    .quota-value {
+      font-family: var(--font-head);
+      font-weight: 800;
+      font-size: 1.15rem;
+      color: var(--text);
+    }
+
+    .invite-result {
+      display: none;
+      margin-top: 16px;
+      padding: 14px;
+      border: 1px solid rgba(15, 118, 110, 0.25);
+      border-radius: 8px;
+      background: rgba(15, 118, 110, 0.06);
+    }
+
+    .invite-link {
+      width: 100%;
+      margin: 10px 0;
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 9px 12px;
+      color: var(--accent);
+      font-size: 0.75rem;
+      word-break: break-all;
+    }
+
+    .role-pill {
+      display: inline-flex;
+      align-items: center;
+      padding: 4px 8px;
+      border-radius: 999px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--accent);
+      font-weight: 700;
+      font-size: 0.68rem;
+      text-transform: capitalize;
+    }
+
+    .muted-note {
+      color: var(--muted);
+      font-size: 0.74rem;
+      line-height: 1.6;
+    }
+
     .hint {
       color: var(--muted);
       font-size: 0.76rem;
@@ -988,6 +1066,11 @@
 
       .profile-upload-actions {
         justify-content: flex-start;
+      }
+
+      .team-grid,
+      .quota-strip {
+        grid-template-columns: 1fr;
       }
     }
 
@@ -1092,6 +1175,30 @@
             Lors d'une vérification d'authenticité, la localisation n'est collectée qu'avec consentement explicite et sert à la sécurité, à la traçabilité et aux statistiques antifraude.
           </div>
         </form>
+        <form class="auth-form hidden" id="invite-accept-form">
+          <h2>Invitation boutique</h2>
+          <p>Definis ton mot de passe pour rejoindre l'espace QuickSellPay de la boutique.</p>
+          <input id="invite-token" type="hidden" />
+          <div class="field">
+            <label for="invite-password">Mot de passe</label>
+            <div class="password-row">
+              <input id="invite-password" type="password" autocomplete="new-password" placeholder="Mot de passe" />
+              <button class="btn btn-ghost" type="button" onclick="togglePassword('invite-password', this)">Voir</button>
+            </div>
+          </div>
+          <div class="field">
+            <label for="invite-confirm-password">Confirmer le mot de passe</label>
+            <div class="password-row">
+              <input id="invite-confirm-password" type="password" autocomplete="new-password" placeholder="Confirmer le mot de passe" />
+              <button class="btn btn-ghost" type="button" onclick="togglePassword('invite-confirm-password', this)">Voir</button>
+            </div>
+          </div>
+          <div class="auth-actions">
+            <button class="btn btn-primary" type="submit" id="invite-accept-submit">Rejoindre la boutique</button>
+            <button class="btn btn-ghost" type="button" onclick="showLoginForm()">Connexion</button>
+          </div>
+          <div class="auth-error" id="invite-accept-error"></div>
+        </form>
       </div>
     </div>
   </div>
@@ -1126,6 +1233,9 @@
       </div>
       <div class="nav-item" onclick="showPage('profile')" id="nav-profile">
         <span class="nav-icon">✎</span> Boutique
+      </div>
+      <div class="nav-item" onclick="showPage('team')" id="nav-team">
+        <span class="nav-icon">US</span> Equipe
       </div>
     </aside>
 
@@ -1250,6 +1360,9 @@
               <option value="weekly">Hebdomadaires</option>
               <option value="monthly">Mensuelles</option>
             </select>
+            <select id="sales-user-filter" class="search-bar hidden" onchange="loadSales()">
+              <option value="">Tous les employés</option>
+            </select>
             <button class="btn btn-primary" onclick="openSaleModal()">+ Nouvelle vente</button>
           </div>
         </div>
@@ -1263,6 +1376,7 @@
                 <th>Prix unit.</th>
                 <th>Sous-total</th>
                 <th>Total vente</th>
+                <th>Employé</th>
                 <th>Source</th>
                 <th>Date</th>
               </tr>
@@ -1339,6 +1453,97 @@
           <div id="webhook-log-container">
             <div class="empty">Aucun appel encore</div>
           </div>
+        </div>
+      </div>
+
+      <div id="page-team" style="display:none">
+        <div class="topbar">
+          <div class="page-title">Equipe boutique</div>
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+            <button class="btn btn-ghost" type="button" onclick="loadTeam()">Actualiser</button>
+          </div>
+        </div>
+        <div class="team-grid">
+          <div class="section">
+            <div class="section-header">
+              <div class="section-title">Inviter un utilisateur</div>
+            </div>
+            <form id="team-invite-form" style="padding:20px">
+              <div class="field">
+                <label for="invite-email">Email</label>
+                <input id="invite-email" type="email" placeholder="collaborateur@boutique.com" />
+              </div>
+              <div class="field">
+                <label for="invite-role">Role</label>
+                <select id="invite-role">
+                  <option value="employee">Employe</option>
+                  <option value="manager">Manager</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
+              <button class="btn btn-primary" type="submit" id="invite-submit">Creer l'invitation</button>
+              <div class="invite-result" id="invite-result">
+                <div class="section-title" style="margin-bottom:8px">Invitation creee</div>
+                <div class="muted-note">Copiez ce lien et envoyez-le a la personne invitee.</div>
+                <div class="invite-link" id="invite-result-link"></div>
+                <button class="btn btn-ghost" type="button" onclick="copyInviteLink()">Copier le lien</button>
+              </div>
+            </form>
+          </div>
+          <div class="section">
+            <div class="section-header">
+              <div class="section-title">Utilisateurs actifs</div>
+              <div class="muted-note" id="team-plan-label">Plan -</div>
+            </div>
+            <div class="quota-strip">
+              <div class="quota-tile">
+                <div class="quota-label">Utilisateurs</div>
+                <div class="quota-value" id="team-users-quota">-</div>
+              </div>
+              <div class="quota-tile">
+                <div class="quota-label">Produits</div>
+                <div class="quota-value" id="team-products-quota">-</div>
+              </div>
+              <div class="quota-tile">
+                <div class="quota-label">Transactions/mois</div>
+                <div class="quota-value" id="team-tx-quota">-</div>
+              </div>
+            </div>
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Email</th>
+                  <th>Role</th>
+                  <th>Statut</th>
+                  <th>Creation</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+            <tbody id="team-users-tbody">
+                <tr><td colspan="5" class="loading">Chargement...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="section" style="margin-top:18px">
+          <div class="section-header">
+            <div class="section-title">Journal d'activite</div>
+            <button class="btn btn-ghost" type="button" onclick="loadAuditLogs()">Actualiser</button>
+          </div>
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Utilisateur</th>
+                <th>Action</th>
+                <th>Objet</th>
+                <th>Details</th>
+              </tr>
+            </thead>
+            <tbody id="audit-logs-tbody">
+              <tr><td colspan="5" class="loading">Chargement...</td></tr>
+            </tbody>
+          </table>
         </div>
       </div>
 
@@ -1693,6 +1898,8 @@
     let allProducts = [];
     let allSales = [];
     let webhookLog = [];
+    let lastInviteLink = '';
+    let teamUsers = [];
 
     function authHeaders(includeContentType = true) {
       const headers = {};
@@ -1731,6 +1938,10 @@
       } else {
         avatar.textContent = initials;
       }
+      const teamNav = document.getElementById('nav-team');
+      if (teamNav) {
+        teamNav.classList.toggle('hidden', !canManageTeam(cached?.role));
+      }
       renderProfileHero(cached);
     }
 
@@ -1756,6 +1967,7 @@
       accessToken = tokenPayload.access_token || '';
       refreshToken = tokenPayload.refresh_token || refreshToken || '';
       sessionState = {
+        user_id: tokenPayload.user_id || '',
         email: tokenPayload.email || document.getElementById('login-email')?.value?.trim() || '',
         identifier: tokenPayload.identifier || document.getElementById('login-email')?.value?.trim() || '',
         company_id: tokenPayload.company_id || '',
@@ -1789,6 +2001,22 @@
       document.getElementById('login-error').textContent = message;
     }
 
+    function showLoginForm() {
+      document.getElementById('invite-accept-form').classList.add('hidden');
+      document.getElementById('login-form').classList.remove('hidden');
+      document.getElementById('invite-accept-error').textContent = '';
+    }
+
+    function showInviteAcceptForm(token) {
+      document.getElementById('login-form').classList.add('hidden');
+      document.getElementById('invite-accept-form').classList.remove('hidden');
+      document.getElementById('invite-token').value = token || '';
+      document.getElementById('invite-password').value = '';
+      document.getElementById('invite-confirm-password').value = '';
+      document.getElementById('invite-accept-error').textContent = '';
+      setAuthVisible(true);
+    }
+
     function setLoginBusy(isBusy) {
       const btn = document.getElementById('login-submit');
       btn.disabled = isBusy;
@@ -1799,6 +2027,7 @@
 
     function setAuthMode(mode) {
       authMode = mode;
+      showLoginForm();
       document.getElementById('auth-title').textContent = mode === 'register' ? 'Inscription' : 'Connexion';
       document.getElementById('auth-subtitle').textContent = mode === 'register'
         ? "Cree ta boutique QuickSellPay puis confirme le mot de passe administrateur."
@@ -2068,6 +2297,42 @@
       }
     }
 
+    async function acceptInvite(event) {
+      event.preventDefault();
+      const submit = document.getElementById('invite-accept-submit');
+      const errorNode = document.getElementById('invite-accept-error');
+      errorNode.textContent = '';
+      submit.disabled = true;
+      submit.textContent = 'Validation...';
+      try {
+        const token = document.getElementById('invite-token').value.trim();
+        const password = document.getElementById('invite-password').value;
+        const confirmPassword = document.getElementById('invite-confirm-password').value;
+        if (!token) throw new Error('Token invitation manquant');
+        if (!password || !confirmPassword) throw new Error('Renseignez le mot de passe et sa confirmation');
+        if (password !== confirmPassword) throw new Error('Les mots de passe ne correspondent pas');
+        const res = await fetch(BASE_URL + '/auth/accept-invite', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token, password, confirm_password: confirmPassword }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          const detail = data.detail?.message || data.detail || 'Invitation impossible';
+          throw new Error(typeof detail === 'string' ? detail : JSON.stringify(detail));
+        }
+        setSession(data);
+        window.history.replaceState({}, document.title, window.location.pathname);
+        toast('Invitation acceptee', 'ok');
+        refreshAll();
+      } catch (e) {
+        errorNode.textContent = e.message || 'Invitation impossible';
+      } finally {
+        submit.disabled = false;
+        submit.textContent = 'Rejoindre la boutique';
+      }
+    }
+
     async function loadCurrentSession() {
       if (!accessToken) {
         clearSession();
@@ -2076,6 +2341,7 @@
       try {
         const me = await apiFetch('/auth/me', { skipAuthRetry: true });
         sessionState = {
+          user_id: me.id || me.user_id || sessionState?.user_id || '',
           email: me.email,
           company_id: me.company_id,
           company_name: me.company_name || sessionState?.company_name || me.company_id,
@@ -2101,6 +2367,7 @@
         }
         const me = await apiFetch('/auth/me', { skipAuthRetry: true });
         sessionState = {
+          user_id: me.id || me.user_id || sessionState?.user_id || '',
           email: me.email,
           company_id: me.company_id,
           company_name: me.company_name || sessionState?.company_name || me.company_id,
@@ -2148,7 +2415,11 @@
         setApiStatus(false, 'Authentification requise');
         return;
       }
-      ['dashboard', 'products', 'sales', 'authenticity', 'profile', 'webhook', 'config'].forEach(p => {
+      if (page === 'team' && !canManageTeam(sessionState?.role)) {
+        toast('Acces reserve aux managers et admins', 'err');
+        return;
+      }
+      ['dashboard', 'products', 'sales', 'authenticity', 'profile', 'team', 'webhook', 'config'].forEach(p => {
         const pageNode = document.getElementById('page-' + p);
         const navNode = document.getElementById('nav-' + p);
         if (!pageNode) return;
@@ -2160,6 +2431,7 @@
       if (page === 'dashboard') loadDashboard();
       if (page === 'authenticity') { loadAuthStats(); populateAuthSelects(); loadVerifLogs(); }
       if (page === 'profile') loadCompanyProfile();
+      if (page === 'team') { loadTeam(); loadAuditLogs(); }
     }
 
     // ─── API HELPERS ─────────────────────────────────────────
@@ -2172,7 +2444,15 @@
     }
 
     function requiresAuth(path) {
-      return path.startsWith('/api/') || path === '/auth/me';
+      return path.startsWith('/api/')
+        || path === '/auth/me'
+        || path === '/auth/users'
+        || path === '/auth/invite'
+        || path === '/auth/audit-logs'
+        || path === '/auth/company-profile'
+        || path === '/auth/company-logo'
+        || path === '/auth/change-password'
+        || path === '/billing/status';
     }
 
     async function apiFetch(path, opts = {}) {
@@ -2202,7 +2482,7 @@
         const err = await res.json().catch(() => ({ detail: res.statusText }));
         const detail = Array.isArray(err.detail)
           ? err.detail.map((item) => item?.msg || JSON.stringify(item)).join(' | ')
-          : (err.detail || 'Erreur API');
+          : (err.detail?.message || err.detail || 'Erreur API');
         const apiErr = new Error(detail);
         apiErr.status = res.status;
         throw apiErr;
@@ -2395,15 +2675,21 @@
     async function loadSales() {
       try {
         const period = document.getElementById('sales-period-filter')?.value || 'all';
-        allSales = await apiFetch('/api/sales?period=' + encodeURIComponent(period));
+        await ensureSalesUserFilter();
+        const userFilter = document.getElementById('sales-user-filter')?.value || '';
+        const params = new URLSearchParams({ period });
+        if (userFilter && canManageTeam(sessionState?.role)) params.set('user_id', userFilter);
+        allSales = await apiFetch('/api/sales?' + params.toString());
         const tbody = document.getElementById('sales-tbody');
-        if (allSales.length === 0) { tbody.innerHTML = '<tr><td colspan="8" class="empty">Aucune vente</td></tr>'; return; }
+        if (allSales.length === 0) { tbody.innerHTML = '<tr><td colspan="9" class="empty">Aucune vente</td></tr>'; return; }
         tbody.innerHTML = [...allSales].reverse().map(s => {
           const items = s.items || [];
+          const seller = s.created_by_email || 'Non renseigne';
           if (!items.length) return `<tr>
         <td style="color:var(--accent)">${s.reference}</td>
         <td colspan="4" class="sku">—</td>
         <td style="font-weight:500;color:var(--accent)">${fmtPrice(s.total)}</td>
+        <td class="sku">${escapeHtml(seller)}</td>
         <td class="sku">${s.source || 'dashboard'}</td>
         <td class="sku">${fmtDate(s.created_at)}</td></tr>`;
           return items.map((it, i) => `<tr>
@@ -2413,13 +2699,32 @@
         <td>${fmtPrice(it.unit_price || 0)}</td>
         <td>${fmtPrice(it.subtotal || (it.unit_price || 0) * (it.quantity || 1))}</td>
         ${i === 0 ? `<td style="vertical-align:top;font-weight:500;color:var(--accent)" rowspan="${items.length}">${fmtPrice(s.total)}</td>
+        <td class="sku" style="vertical-align:top" rowspan="${items.length}">${escapeHtml(seller)}</td>
         <td class="sku" style="vertical-align:top" rowspan="${items.length}">${s.source || 'dashboard'}</td>
         <td class="sku" style="vertical-align:top" rowspan="${items.length}">${fmtDate(s.created_at)}</td>` : ''}
       </tr>`).join('');
         }).join('');
       } catch (e) {
-        document.getElementById('sales-tbody').innerHTML = `<tr><td colspan="6" class="empty">Erreur : ${e.message}</td></tr>`;
+        document.getElementById('sales-tbody').innerHTML = `<tr><td colspan="9" class="empty">Erreur : ${e.message}</td></tr>`;
       }
+    }
+
+    async function ensureSalesUserFilter() {
+      const select = document.getElementById('sales-user-filter');
+      if (!select) return;
+      const canFilter = canManageTeam(sessionState?.role);
+      select.classList.toggle('hidden', !canFilter);
+      if (!canFilter) {
+        select.value = '';
+        return;
+      }
+      if (!teamUsers.length) {
+        teamUsers = await apiFetch('/auth/users');
+      }
+      const previous = select.value;
+      select.innerHTML = '<option value="">Tous les employes</option>' +
+        teamUsers.map((user) => `<option value="${user.id}">${escapeHtml(user.email)} - ${escapeHtml(roleLabel(user.role))}</option>`).join('');
+      select.value = previous;
     }
 
     function openSaleModal() {
@@ -2446,6 +2751,165 @@
         loadSales();
         loadDashboard();
       } catch (e) { toast(e.message, 'err'); }
+    }
+
+    // --- TEAM ------------------------------------------------
+    function canManageTeam(role) {
+      return ['manager', 'admin', 'superadmin'].includes(role || '');
+    }
+
+    function roleLabel(role) {
+      return ({ employee: 'Employe', manager: 'Manager', admin: 'Admin', superadmin: 'Superadmin' })[role] || role || '-';
+    }
+
+    function invitePageUrl(token) {
+      const url = new URL(window.location.href);
+      url.pathname = '/';
+      url.search = '';
+      url.hash = '';
+      url.searchParams.set('invite_token', token);
+      return url.toString();
+    }
+
+    async function loadTeam() {
+      const tbody = document.getElementById('team-users-tbody');
+      if (!tbody) return;
+      tbody.innerHTML = '<tr><td colspan="5" class="loading">Chargement...</td></tr>';
+      try {
+        const [users, billing] = await Promise.all([
+          apiFetch('/auth/users'),
+          apiFetch('/billing/status'),
+        ]);
+        teamUsers = users;
+        const limits = billing.limits || {};
+        const activeUsers = users.filter((u) => Number(u.is_active) === 1).length;
+        document.getElementById('team-plan-label').textContent = `Plan ${billing.plan || sessionState?.plan || '-'}`;
+        document.getElementById('team-users-quota').textContent = `${activeUsers} / ${limits.users ?? '-'}`;
+        document.getElementById('team-products-quota').textContent = limits.products ?? '-';
+        document.getElementById('team-tx-quota').textContent = limits.tx_month ?? '-';
+        if (!users.length) {
+          tbody.innerHTML = '<tr><td colspan="5" class="empty">Aucun utilisateur</td></tr>';
+          return;
+        }
+        tbody.innerHTML = users.map((user) => {
+          const isSelf = user.id === sessionState?.user_id;
+          const active = Number(user.is_active) === 1;
+          const canDeactivate = active && !isSelf && user.role !== 'superadmin';
+          const canActivate = !active && user.role !== 'superadmin';
+          return `<tr>
+            <td>${escapeHtml(user.email || '-')}</td>
+            <td><span class="role-pill">${escapeHtml(roleLabel(user.role))}</span></td>
+            <td><span class="badge ${active ? 'ok' : 'low'}">${active ? 'Actif' : 'Desactive'}</span></td>
+            <td class="sku">${fmtDate(user.created_at)}</td>
+            <td>
+              ${canDeactivate ? `<button class="btn btn-danger" style="padding:4px 10px;font-size:0.65rem" onclick="deactivateTeamUser('${user.id}')">Desactiver</button>` : ''}
+              ${canActivate ? `<button class="btn btn-ghost" style="padding:4px 10px;font-size:0.65rem" onclick="activateTeamUser('${user.id}')">Activer</button>` : ''}
+              ${!canDeactivate && !canActivate ? '<span class="muted-note">-</span>' : ''}
+            </td>
+          </tr>`;
+        }).join('');
+      } catch (e) {
+        tbody.innerHTML = `<tr><td colspan="5" class="empty">${escapeHtml(e.message || 'Chargement impossible')}</td></tr>`;
+      }
+    }
+
+    async function inviteTeamUser(event) {
+      event.preventDefault();
+      const submit = document.getElementById('invite-submit');
+      const result = document.getElementById('invite-result');
+      const email = document.getElementById('invite-email').value.trim();
+      const role = document.getElementById('invite-role').value;
+      result.style.display = 'none';
+      submit.disabled = true;
+      submit.textContent = 'Creation...';
+      try {
+        if (!email) throw new Error('Email requis');
+        const data = await apiFetch('/auth/invite', {
+          method: 'POST',
+          body: JSON.stringify({ email, role }),
+        });
+        lastInviteLink = invitePageUrl(data.invite_token);
+        document.getElementById('invite-result-link').textContent = lastInviteLink;
+        result.style.display = 'block';
+        document.getElementById('invite-email').value = '';
+        toast('Invitation creee', 'ok');
+        loadTeam();
+      } catch (e) {
+        toast(e.message || 'Invitation impossible', 'err');
+      } finally {
+        submit.disabled = false;
+        submit.textContent = "Creer l'invitation";
+      }
+    }
+
+    async function copyInviteLink() {
+      if (!lastInviteLink) return;
+      await navigator.clipboard.writeText(lastInviteLink);
+      toast('Lien invitation copie', 'ok');
+    }
+
+    async function deactivateTeamUser(userId) {
+      if (!confirm('Desactiver cet utilisateur ?')) return;
+      try {
+        await apiFetch('/auth/users/' + encodeURIComponent(userId), { method: 'DELETE' });
+        toast('Utilisateur desactive', 'ok');
+        loadTeam();
+      } catch (e) {
+        toast(e.message || 'Desactivation impossible', 'err');
+      }
+    }
+
+    async function activateTeamUser(userId) {
+      try {
+        await apiFetch('/auth/users/' + encodeURIComponent(userId) + '/activate', { method: 'PATCH' });
+        toast('Utilisateur active', 'ok');
+        loadTeam();
+      } catch (e) {
+        toast(e.message || 'Activation impossible', 'err');
+      }
+    }
+
+    function auditActionLabel(action) {
+      return ({
+        user_invited: 'Invitation utilisateur',
+        user_activated: 'Activation utilisateur',
+        user_deactivated: 'Desactivation utilisateur',
+        product_created: 'Creation produit',
+        product_updated: 'Modification produit',
+        product_deleted: 'Suppression produit',
+        product_image_updated: 'Image produit modifiee',
+        stock_updated: 'Modification stock',
+        sale_created: 'Vente creee',
+        auth_codes_generated: 'Codes generes',
+      })[action] || action;
+    }
+
+    async function loadAuditLogs() {
+      const tbody = document.getElementById('audit-logs-tbody');
+      if (!tbody) return;
+      tbody.innerHTML = '<tr><td colspan="5" class="loading">Chargement...</td></tr>';
+      try {
+        const logs = await apiFetch('/auth/audit-logs?limit=100');
+        if (!logs.length) {
+          tbody.innerHTML = '<tr><td colspan="5" class="empty">Aucune activite tracee</td></tr>';
+          return;
+        }
+        tbody.innerHTML = logs.map((log) => {
+          const details = Object.entries(log.details || {})
+            .slice(0, 4)
+            .map(([key, value]) => `${key}: ${typeof value === 'object' ? JSON.stringify(value) : value}`)
+            .join(' | ');
+          return `<tr>
+            <td class="sku">${fmtDate(log.created_at)}</td>
+            <td>${escapeHtml(log.user_email || '-')}</td>
+            <td>${escapeHtml(auditActionLabel(log.action))}</td>
+            <td>${escapeHtml(log.object_label || log.object_id || log.object_type)}</td>
+            <td class="sku">${escapeHtml(details || '-')}</td>
+          </tr>`;
+        }).join('');
+      } catch (e) {
+        tbody.innerHTML = `<tr><td colspan="5" class="empty">${escapeHtml(e.message || 'Chargement impossible')}</td></tr>`;
+      }
     }
 
     // ─── WEBHOOK ─────────────────────────────────────────────
@@ -2500,6 +2964,15 @@
     function closeModal(id) { document.getElementById(id).classList.remove('show'); }
     function fmtPrice(n) { return new Intl.NumberFormat('fr-FR').format(n || 0) + ' FCFA'; }
     function fmtDate(d) { return d ? new Date(d).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'; }
+    function escapeHtml(value) {
+      return String(value ?? '').replace(/[&<>"']/g, (char) => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;',
+      }[char]));
+    }
     function setApiStatus(ok, message = null) {
       document.getElementById('api-status-dot').className = 'dot' + (ok ? '' : ' red');
       document.getElementById('api-status-text').textContent = message || (ok ? 'Backend connecté' : 'Backend non joignable');
@@ -2644,6 +3117,8 @@ async function generateAuthCodes() {
     // ─── INIT ────────────────────────────────────────────────
     document.getElementById('webhook-url').value = BASE_URL + '/api/webhook/sale';
     document.getElementById('login-form').addEventListener('submit', login);
+    document.getElementById('invite-accept-form').addEventListener('submit', acceptInvite);
+    document.getElementById('team-invite-form').addEventListener('submit', inviteTeamUser);
     document.getElementById('register-logo').addEventListener('change', (event) => {
       const file = event.target.files?.[0];
       const preview = document.getElementById('register-logo-preview');
@@ -2665,6 +3140,13 @@ async function generateAuthCodes() {
     renderSession();
 
     (async () => {
+      const inviteToken = new URLSearchParams(window.location.search).get('invite_token')
+        || new URLSearchParams(window.location.search).get('token');
+      if (inviteToken) {
+        clearSession();
+        showInviteAcceptForm(inviteToken);
+        return;
+      }
       const hasSession = await loadCurrentSession();
       if (hasSession) {
         setAuthVisible(false);

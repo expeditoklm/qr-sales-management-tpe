@@ -338,11 +338,28 @@ class SaleCreate(BaseModel):
 class Sale(BaseModel):
     id:        str
     reference: str
+    source:    Optional[str] = "dashboard"
     items:     List[Any]
     total:     float
     customer:  Optional[str] = None
     note:      Optional[str] = None
+    created_by_user_id: Optional[str] = None
+    created_by_email:   Optional[str] = None
+    created_by_role:    Optional[str] = None
     created_at: str
+
+
+class AuditLog(BaseModel):
+    id:                 str
+    user_id:            Optional[str] = None
+    user_email:         Optional[str] = None
+    user_role:          Optional[str] = None
+    action:             str
+    object_type:        str
+    object_id:          Optional[str] = None
+    object_label:       Optional[str] = None
+    details:            Dict[str, Any] = {}
+    created_at:         str
 
 
 class WebhookPayload(BaseModel):

@@ -287,6 +287,10 @@ def deactivate_user(user_id: str):
     with _shared_conn() as conn:
         conn.execute("UPDATE users SET is_active=0 WHERE id=?", (user_id,))
 
+def activate_user(user_id: str):
+    with _shared_conn() as conn:
+        conn.execute("UPDATE users SET is_active=1 WHERE id=?", (user_id,))
+
 
 # ─── Subscriptions ────────────────────────────────────────────────────────────
 
@@ -481,8 +485,26 @@ def get_conn(company_id: str) -> sqlite3.Connection:
             total      REAL NOT NULL DEFAULT 0,
             customer   TEXT,
             note       TEXT,
+            created_by_user_id TEXT,
+            created_by_email   TEXT,
+            created_by_role    TEXT,
             created_at TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS audit_logs (
+            id           TEXT PRIMARY KEY,
+            user_id      TEXT,
+            user_email   TEXT,
+            user_role    TEXT,
+            action       TEXT NOT NULL,
+            object_type  TEXT NOT NULL,
+            object_id    TEXT,
+            object_label TEXT,
+            details      TEXT NOT NULL DEFAULT '{}',
+            created_at   TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_logs(created_at);
+        CREATE INDEX IF NOT EXISTS idx_audit_user    ON audit_logs(user_id);
+        CREATE INDEX IF NOT EXISTS idx_audit_object  ON audit_logs(object_type, object_id);
 
         CREATE TABLE IF NOT EXISTS auth_codes (
             id         TEXT PRIMARY KEY,
@@ -516,6 +538,18 @@ def get_conn(company_id: str) -> sqlite3.Connection:
         CREATE INDEX IF NOT EXISTS idx_verif_product ON verifications(product_id);
         CREATE INDEX IF NOT EXISTS idx_verif_code    ON verifications(code_id);
     """)
+    sale_columns = {
+        row["name"]
+        for row in conn.execute("PRAGMA table_info(sales)").fetchall()
+    }
+    if "created_by_user_id" not in sale_columns:
+        conn.execute("ALTER TABLE sales ADD COLUMN created_by_user_id TEXT")
+    if "created_by_email" not in sale_columns:
+        conn.execute("ALTER TABLE sales ADD COLUMN created_by_email TEXT")
+    if "created_by_role" not in sale_columns:
+        conn.execute("ALTER TABLE sales ADD COLUMN created_by_role TEXT")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_sales_user ON sales(created_by_user_id)")
+
     columns = {
         row["name"]
         for row in conn.execute("PRAGMA table_info(verifications)").fetchall()
@@ -559,11 +593,29 @@ def init_tenant_db(company_id: str):
                 reference  TEXT NOT NULL,
                 source     TEXT DEFAULT 'dashboard',
                 items      TEXT NOT NULL,
-                total      REAL NOT NULL DEFAULT 0,
-                customer   TEXT,
-                note       TEXT,
-                created_at TEXT NOT NULL
-            );
+            total      REAL NOT NULL DEFAULT 0,
+            customer   TEXT,
+            note       TEXT,
+            created_by_user_id TEXT,
+            created_by_email   TEXT,
+            created_by_role    TEXT,
+            created_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS audit_logs (
+            id           TEXT PRIMARY KEY,
+            user_id      TEXT,
+            user_email   TEXT,
+            user_role    TEXT,
+            action       TEXT NOT NULL,
+            object_type  TEXT NOT NULL,
+            object_id    TEXT,
+            object_label TEXT,
+            details      TEXT NOT NULL DEFAULT '{}',
+            created_at   TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_logs(created_at);
+        CREATE INDEX IF NOT EXISTS idx_audit_user    ON audit_logs(user_id);
+        CREATE INDEX IF NOT EXISTS idx_audit_object  ON audit_logs(object_type, object_id);
 
             CREATE TABLE IF NOT EXISTS auth_codes (
                 id         TEXT PRIMARY KEY,
@@ -597,6 +649,18 @@ def init_tenant_db(company_id: str):
             CREATE INDEX IF NOT EXISTS idx_verif_product ON verifications(product_id);
             CREATE INDEX IF NOT EXISTS idx_verif_code    ON verifications(code_id);
         """)
+        sale_columns = {
+            row["name"]
+            for row in conn.execute("PRAGMA table_info(sales)").fetchall()
+        }
+        if "created_by_user_id" not in sale_columns:
+            conn.execute("ALTER TABLE sales ADD COLUMN created_by_user_id TEXT")
+        if "created_by_email" not in sale_columns:
+            conn.execute("ALTER TABLE sales ADD COLUMN created_by_email TEXT")
+        if "created_by_role" not in sale_columns:
+            conn.execute("ALTER TABLE sales ADD COLUMN created_by_role TEXT")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_sales_user ON sales(created_by_user_id)")
+
         columns = {
             row["name"]
             for row in conn.execute("PRAGMA table_info(verifications)").fetchall()
@@ -714,9 +778,15 @@ def _sale_row(row) -> dict | None:
     d["items"] = json.loads(d["items"])
     return d
 
-def all_sales(company_id: str) -> list:
+def all_sales(company_id: str, created_by_user_id: str | None = None) -> list:
     with get_conn(company_id) as conn:
-        rows = conn.execute("SELECT * FROM sales ORDER BY created_at DESC").fetchall()
+        if created_by_user_id:
+            rows = conn.execute(
+                "SELECT * FROM sales WHERE created_by_user_id=? ORDER BY created_at DESC",
+                (created_by_user_id,),
+            ).fetchall()
+        else:
+            rows = conn.execute("SELECT * FROM sales ORDER BY created_at DESC").fetchall()
     return [_sale_row(r) for r in rows]
 
 def count_sales_this_month(company_id: str) -> int:
@@ -736,12 +806,57 @@ def insert_sale(company_id: str, s: dict):
     items_json = json.dumps(s.get("items", []), ensure_ascii=False)
     with get_conn(company_id) as conn:
         conn.execute("""
-            INSERT INTO sales (id,reference,source,items,total,customer,note,created_at)
-            VALUES (:id,:reference,:source,:items,:total,:customer,:note,:created_at)
+            INSERT INTO sales
+                (id,reference,source,items,total,customer,note,
+                 created_by_user_id,created_by_email,created_by_role,created_at)
+            VALUES
+                (:id,:reference,:source,:items,:total,:customer,:note,
+                 :created_by_user_id,:created_by_email,:created_by_role,:created_at)
         """, {**s, "items": items_json})
 
 
 # ─── Auth codes ───────────────────────────────────────────────────────────────
+
+# --- Audit logs --------------------------------------------------------------
+
+def insert_audit_log(company_id: str, entry: dict):
+    payload = {
+        **entry,
+        "details": json.dumps(entry.get("details") or {}, ensure_ascii=False),
+    }
+    with get_conn(company_id) as conn:
+        conn.execute("""
+            INSERT INTO audit_logs
+                (id,user_id,user_email,user_role,action,object_type,
+                 object_id,object_label,details,created_at)
+            VALUES
+                (:id,:user_id,:user_email,:user_role,:action,:object_type,
+                 :object_id,:object_label,:details,:created_at)
+        """, payload)
+
+def list_audit_logs(company_id: str, user_id: str | None = None, limit: int = 100) -> list:
+    limit = max(1, min(limit, 500))
+    with get_conn(company_id) as conn:
+        if user_id:
+            rows = conn.execute(
+                "SELECT * FROM audit_logs WHERE user_id=? ORDER BY created_at DESC LIMIT ?",
+                (user_id, limit),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM audit_logs ORDER BY created_at DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+    result = []
+    for row in rows:
+        item = dict(row)
+        try:
+            item["details"] = json.loads(item.get("details") or "{}")
+        except Exception:
+            item["details"] = {}
+        result.append(item)
+    return result
+
 
 def insert_auth_code(company_id: str, c: dict):
     with get_conn(company_id) as conn:
