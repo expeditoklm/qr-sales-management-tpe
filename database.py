@@ -5,8 +5,8 @@ La base partagée (shared.db) stocke : companies, users, subscriptions
 """
 import sqlite3, json
 from pathlib import Path
-from functools import lru_cache
 from config import get_settings
+from db_driver import mysql_conn, mysql_enabled
 
 cfg = get_settings()
 
@@ -16,7 +16,9 @@ cfg = get_settings()
 
 SHARED_DB = cfg.DATA_DIR / "shared.db"
 
-def _shared_conn() -> sqlite3.Connection:
+def _shared_conn():
+    if mysql_enabled():
+        return mysql_conn()
     cfg.DATA_DIR.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(SHARED_DB))
     conn.row_factory = sqlite3.Row
@@ -303,20 +305,36 @@ def get_subscription(company_id: str) -> dict | None:
 
 def upsert_subscription(s: dict):
     with _shared_conn() as conn:
-        conn.execute("""
-            INSERT INTO subscriptions
-                (id,company_id,plan,status,start_date,end_date,
-                 stripe_subscription_id,stripe_customer_id,updated_at)
-            VALUES
-                (:id,:company_id,:plan,:status,:start_date,:end_date,
-                 :stripe_subscription_id,:stripe_customer_id,:updated_at)
-            ON CONFLICT(company_id) DO UPDATE SET
-                plan=excluded.plan, status=excluded.status,
-                end_date=excluded.end_date,
-                stripe_subscription_id=excluded.stripe_subscription_id,
-                stripe_customer_id=excluded.stripe_customer_id,
-                updated_at=excluded.updated_at
-        """, s)
+        if mysql_enabled():
+            conn.execute("""
+                INSERT INTO subscriptions
+                    (id,company_id,plan,status,start_date,end_date,
+                     stripe_subscription_id,stripe_customer_id,updated_at)
+                VALUES
+                    (:id,:company_id,:plan,:status,:start_date,:end_date,
+                     :stripe_subscription_id,:stripe_customer_id,:updated_at)
+                ON DUPLICATE KEY UPDATE
+                    plan=VALUES(plan), status=VALUES(status),
+                    end_date=VALUES(end_date),
+                    stripe_subscription_id=VALUES(stripe_subscription_id),
+                    stripe_customer_id=VALUES(stripe_customer_id),
+                    updated_at=VALUES(updated_at)
+            """, s)
+        else:
+            conn.execute("""
+                INSERT INTO subscriptions
+                    (id,company_id,plan,status,start_date,end_date,
+                     stripe_subscription_id,stripe_customer_id,updated_at)
+                VALUES
+                    (:id,:company_id,:plan,:status,:start_date,:end_date,
+                     :stripe_subscription_id,:stripe_customer_id,:updated_at)
+                ON CONFLICT(company_id) DO UPDATE SET
+                    plan=excluded.plan, status=excluded.status,
+                    end_date=excluded.end_date,
+                    stripe_subscription_id=excluded.stripe_subscription_id,
+                    stripe_customer_id=excluded.stripe_customer_id,
+                    updated_at=excluded.updated_at
+            """, s)
 
 def get_active_plan(company_id: str) -> str:
     """Retourne le plan actif pour une boutique ('free' par défaut)."""
@@ -424,18 +442,23 @@ def global_stats() -> dict:
     with _shared_conn() as conn:
         n_companies = conn.execute("SELECT COUNT(*) FROM companies WHERE status='active'").fetchone()[0]
         n_users     = conn.execute("SELECT COUNT(*) FROM users WHERE is_active=1").fetchone()[0]
-    # Agréger les ventes de toutes les boutiques
     total_revenue = 0.0
     total_sales   = 0
-    for db_file in cfg.DATA_DIR.glob("erp_*.db"):
-        try:
-            c = sqlite3.connect(str(db_file))
-            row = c.execute("SELECT COUNT(*), COALESCE(SUM(total),0) FROM sales").fetchone()
-            total_sales   += row[0]
-            total_revenue += row[1]
-            c.close()
-        except Exception:
-            pass
+    if mysql_enabled():
+        with get_conn("") as conn:
+            row = conn.execute("SELECT COUNT(*) AS count, COALESCE(SUM(total),0) AS revenue FROM sales").fetchone()
+            total_sales = row["count"] if row else 0
+            total_revenue = row["revenue"] if row else 0
+    else:
+        for db_file in cfg.DATA_DIR.glob("erp_*.db"):
+            try:
+                c = sqlite3.connect(str(db_file))
+                row = c.execute("SELECT COUNT(*), COALESCE(SUM(total),0) FROM sales").fetchone()
+                total_sales   += row[0]
+                total_revenue += row[1]
+                c.close()
+            except Exception:
+                pass
     return {
         "companies": n_companies,
         "users":     n_users,
@@ -453,7 +476,22 @@ def _tenant_path(company_id: str) -> Path:
     return cfg.DATA_DIR / f"erp_{safe}.db"
 
 
-def get_conn(company_id: str) -> sqlite3.Connection:
+def tenant_ids() -> list[str]:
+    if mysql_enabled():
+        with _shared_conn() as conn:
+            rows = conn.execute("SELECT id FROM companies WHERE status='active'").fetchall()
+        return [row["id"] for row in rows]
+    return [
+        f.stem[4:]
+        for f in cfg.DATA_DIR.glob("erp_*.db")
+    ]
+
+
+def get_conn(company_id: str):
+    if mysql_enabled():
+        conn = mysql_conn(company_id or None)
+        conn.executescript("CREATE TABLE IF NOT EXISTS products")
+        return conn
     cfg.DATA_DIR.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(_tenant_path(company_id)))
     conn.row_factory = sqlite3.Row
@@ -954,4 +992,7 @@ def auth_code_aggregate_stats(company_id: str) -> dict:
 
 # ─── Init ─────────────────────────────────────────────────────────────────────
 init_shared_db()
-print(f"[DB] Base partagee -> {SHARED_DB}")
+if mysql_enabled():
+    print(f"[DB] MySQL -> {cfg.MYSQL_HOST}:{cfg.MYSQL_PORT}/{cfg.MYSQL_DATABASE}")
+else:
+    print(f"[DB] Base partagee -> {SHARED_DB}")

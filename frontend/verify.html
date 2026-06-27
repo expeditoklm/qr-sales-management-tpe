@@ -23,7 +23,10 @@
     --grad: linear-gradient(135deg,#0f172a,#1565d8,#22c1c3);
   }
   body {
-    background: var(--bg);
+    background:
+      radial-gradient(ellipse at top right, rgba(21,101,216,.10) 0%, transparent 55%),
+      radial-gradient(ellipse at bottom left, rgba(34,193,195,.08) 0%, transparent 50%),
+      var(--bg);
     color: var(--text);
     font-family: var(--body);
     min-height: 100dvh;
@@ -31,47 +34,65 @@
     flex-direction: column;
     align-items: center;
     justify-content: flex-start;
-    padding: 0 16px 48px;
+    padding: 0 16px 40px;
   }
   header {
     width: 100%;
     max-width: 540px;
-    padding: 28px 0 20px;
+    padding: 20px 0 16px;
     display: flex;
     align-items: center;
     gap: 10px;
   }
   .logo-mark {
-    width: 36px;
-    height: 36px;
+    width: 38px;
+    height: 38px;
     background: var(--grad);
-    border-radius: 8px;
+    border-radius: 10px;
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
+    box-shadow: 0 4px 14px rgba(21,101,216,.22);
   }
   .logo-mark svg { width: 18px; height: 18px; }
-  .logo-text { font-size: 1rem; font-weight: 700; letter-spacing: -0.02em; }
+  .logo-text { font-size: 1rem; font-weight: 700; letter-spacing: -0.02em; font-family: var(--head); }
   .logo-text span { color: var(--muted); font-weight: 400; }
   .card {
     width: 100%;
     max-width: 540px;
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 16px;
-    padding: 28px 24px;
-    margin-bottom: 16px;
+    border-radius: 18px;
+    padding: 26px 24px;
+    margin-bottom: 14px;
+    box-shadow: 0 4px 24px rgba(15,23,42,.06);
   }
-  .card-title { font-size: 1.25rem; font-weight: 800; letter-spacing: -0.04em; margin-bottom: 8px; }
-  .card-sub { color: var(--muted); font-size: 0.8rem; line-height: 1.7; margin-bottom: 24px; font-family: var(--mono); }
+  .card-title { font-size: 1.2rem; font-weight: 800; letter-spacing: -0.04em; margin-bottom: 6px; font-family: var(--head); }
+  .card-sub { color: var(--muted); font-size: 0.78rem; line-height: 1.7; margin-bottom: 20px; font-family: var(--mono); }
+  .card-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 20px;
+    background: rgba(21,101,216,.08);
+    border: 1px solid rgba(21,101,216,.15);
+    color: var(--accent);
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 14px;
+  }
+  .card-badge-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 6px var(--accent); }
   .code-label { font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.1em; color: var(--muted); text-transform: uppercase; margin-bottom: 8px; display: block; }
   .code-wrapper { position: relative; margin-bottom: 8px; }
   #codeInput {
     width: 100%;
-    background: var(--bg);
+    background: rgba(21,101,216,.03);
     border: 1.5px solid var(--border);
-    border-radius: 10px;
+    border-radius: 12px;
     padding: 18px 56px 18px 20px;
     color: var(--text);
     font-family: var(--mono);
@@ -80,12 +101,16 @@
     letter-spacing: 0.18em;
     text-align: center;
     outline: none;
-    transition: border-color .2s, box-shadow .2s;
+    transition: border-color .2s, box-shadow .2s, background .2s;
     caret-color: var(--accent);
   }
-  #codeInput:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(63,185,80,.12); }
-  #codeInput.err { border-color: var(--danger); box-shadow: 0 0 0 3px rgba(248,81,73,.12); }
-  #codeInput.ok  { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(63,185,80,.12); }
+  #codeInput:focus {
+    border-color: var(--accent);
+    background: rgba(21,101,216,.05);
+    box-shadow: 0 0 0 3px rgba(21,101,216,.1);
+  }
+  #codeInput.err { border-color: var(--danger); box-shadow: 0 0 0 3px rgba(214,69,69,.1); }
+  #codeInput.ok  { border-color: #16a34a; box-shadow: 0 0 0 3px rgba(22,163,74,.1); }
   .clear-btn {
     position: absolute;
     right: 16px;
@@ -102,19 +127,25 @@
   .code-hint { font-family: var(--mono); font-size: 0.68rem; color: var(--muted); text-align: center; margin-bottom: 20px; }
   #continueBtn, #submitVerifyBtn {
     width: 100%;
-    padding: 16px;
+    padding: 15px;
     background: var(--grad);
     color: #ffffff;
     border: none;
-    border-radius: 10px;
+    border-radius: 12px;
     font-family: var(--head);
-    font-size: 0.95rem;
+    font-size: 0.92rem;
     font-weight: 700;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 8px;
+    box-shadow: 0 8px 20px rgba(21,101,216,.22);
+    transition: transform .15s, box-shadow .15s;
+  }
+  #continueBtn:hover:not(:disabled), #submitVerifyBtn:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 12px 28px rgba(21,101,216,.28);
   }
   #continueBtn:disabled, #submitVerifyBtn:disabled { opacity: .55; cursor: not-allowed; }
   .spinner {
@@ -142,11 +173,11 @@
   }
   .conn-error.show { display: block; }
   .consent-box, .company-box, .legal-links {
-    margin-top: 14px;
+    margin-top: 12px;
     padding: 12px 14px;
     border: 1px solid var(--border);
     border-radius: 10px;
-    background: rgba(255,255,255,.02);
+    background: rgba(21,101,216,.025);
     font-family: var(--mono);
     font-size: 0.72rem;
     line-height: 1.7;
@@ -231,18 +262,35 @@
     padding: 20px;
   }
   .intro-modal {
-    width: min(560px, 100%);
-    background: linear-gradient(180deg, rgba(255,255,255,.98), rgba(244,247,251,.98));
+    width: min(520px, 100%);
+    background: linear-gradient(160deg, rgba(255,255,255,.99), rgba(244,247,251,.98));
     border: 1px solid var(--border);
-    border-radius: 20px;
-    padding: 28px;
-    box-shadow: 0 28px 80px rgba(15, 23, 42, .18);
+    border-radius: 22px;
+    padding: 32px 28px;
+    box-shadow: 0 32px 90px rgba(15,23,42,.22), 0 2px 0 rgba(255,255,255,.8) inset;
+  }
+  .intro-modal-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  .intro-modal-icon {
+    width: 46px;
+    height: 46px;
+    border-radius: 14px;
+    background: var(--grad);
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+    box-shadow: 0 6px 18px rgba(21,101,216,.25);
   }
   .intro-modal h1 {
-    font-size: 1.7rem;
-    line-height: 1;
+    font-size: 1.5rem;
+    line-height: 1.05;
     letter-spacing: -0.05em;
-    margin-bottom: 12px;
+    margin-bottom: 0;
+    font-family: var(--head);
   }
   .intro-modal p, .intro-modal li {
     font-family: var(--mono);
@@ -270,9 +318,17 @@
     width: 100%;
     text-align: center;
     font-family: var(--mono);
-    font-size: 0.68rem;
-    color: #3a4058;
+    font-size: 0.64rem;
+    color: #8a94ae;
     padding-top: 8px;
+    border-top: 1px solid var(--border);
+    margin-top: 8px;
+  }
+  .result-card {
+    border-radius: 14px;
+    overflow: hidden;
+    border: 1.5px solid var(--border);
+    box-shadow: 0 4px 20px rgba(15,23,42,.06);
   }
   @media (max-width: 560px) {
     body {
@@ -341,12 +397,19 @@
 
 <div class="modal-backdrop" id="introModal">
   <div class="intro-modal">
-    <h1>Authentifier un produit</h1>
-    <p>Avant de commencer, vous pouvez autoriser la collecte de localisation. Cette permission est optionnelle et sert uniquement à la sécurité, à la traçabilité et aux statistiques antifraude.</p>
+    <div class="intro-modal-header">
+      <div class="intro-modal-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="22" height="22">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+        </svg>
+      </div>
+      <h1>Authentifier un produit</h1>
+    </div>
+    <p>Avant de commencer, vous pouvez autoriser la collecte de localisation. Cette permission est optionnelle et sert uniquement a la securite, a la tracabilite et aux statistiques antifraude.</p>
     <ul>
-      <li>Sans localisation : la vérification continue normalement.</li>
-      <li>Avec localisation : les tentatives suspectes sont mieux contextualisées.</li>
-      <li>Les liens ci-dessous permettent de consulter les pages d'information et de conformité.</li>
+      <li>Sans localisation : la verification continue normalement.</li>
+      <li>Avec localisation : les tentatives suspectes sont mieux contextualisees.</li>
+      <li>Les liens ci-dessous permettent de consulter les pages d'information et de conformite.</li>
     </ul>
     <div class="legal-links">
       <a href="/about" target="_blank">À propos</a> ·
@@ -381,6 +444,7 @@
 <div class="conn-error" id="connError"></div>
 
 <div class="card" id="inputCard" style="display:none">
+  <div class="card-badge"><div class="card-badge-dot"></div>QuickSellPay — Verification d'authenticite</div>
   <div class="card-title">Votre produit est-il authentique ?</div>
   <p class="card-sub">Reperez le code imprime a cote du QR code sur l'emballage et verifiez la provenance du produit.</p>
 

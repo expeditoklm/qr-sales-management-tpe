@@ -97,6 +97,14 @@ class Settings:
     DATA_DIR: Path = _get_path("DATA_DIR", "./data")
     BACKUP_DIR: Path = _get_path("BACKUP_DIR", "./backups")
 
+    # Base de donnees: sqlite | mysql
+    DB_ENGINE: str = _get("DB_ENGINE", "sqlite").lower()
+    MYSQL_HOST: str = _get("MYSQL_HOST", "127.0.0.1")
+    MYSQL_PORT: int = _get_int("MYSQL_PORT", 3306)
+    MYSQL_DATABASE: str = _get("MYSQL_DATABASE", "quicksellpay")
+    MYSQL_USER: str = _get("MYSQL_USER", "quicksellpay")
+    MYSQL_PASSWORD: str = _get("MYSQL_PASSWORD", "")
+
     # Stockage images: local | s3 | r2
     STORAGE_PROVIDER: str = _get("STORAGE_PROVIDER", "local").lower()
     STORAGE_BUCKET: str = _get("STORAGE_BUCKET", "")

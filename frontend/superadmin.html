@@ -435,35 +435,27 @@
         </div>
       </section>
 
-      <section class="panel">
+      <section class="panel hidden" id="users-panel">
         <div class="panel-head">
-          <h2>Checklist de mise en ligne</h2>
-          <div class="hint">Stripe et stockage objet S3-compatible</div>
+          <h2 id="users-title">Utilisateurs</h2>
+          <button class="btn" type="button" id="close-users-btn">Fermer</button>
         </div>
-        <div class="config-grid">
-          <article class="config-card">
-            <h3>Stripe</h3>
-            <div class="hint">À renseigner dans <code>backend/.env</code></div>
-            <ul>
-              <li><code>STRIPE_SECRET_KEY</code> avec la clé live ou test.</li>
-              <li><code>STRIPE_WEBHOOK_SECRET</code> depuis le webhook Stripe.</li>
-              <li><code>STRIPE_PRICE_BASIC</code>, <code>STRIPE_PRICE_PRO</code>, <code>STRIPE_PRICE_ENTERPRISE</code>.</li>
-              <li>Créer les 3 Price IDs dans Stripe Dashboard.</li>
-              <li>Déclarer le webhook HTTPS public vers <code>/billing/webhook</code>.</li>
-              <li>Tester en local avec Stripe CLI puis en staging HTTPS.</li>
-            </ul>
-          </article>
-          <article class="config-card">
-            <h3>S3 / R2</h3>
-            <div class="hint">Le backend parle en mode S3-compatible unique.</div>
-            <ul>
-              <li><code>STORAGE_PROVIDER=s3</code> ou <code>r2</code>.</li>
-              <li><code>STORAGE_BUCKET</code>, <code>STORAGE_REGION</code>, <code>STORAGE_ENDPOINT_URL</code>.</li>
-              <li><code>STORAGE_ACCESS_KEY_ID</code> et <code>STORAGE_SECRET_ACCESS_KEY</code>.</li>
-              <li><code>STORAGE_PUBLIC_BASE_URL</code> pour générer des URLs lisibles par web/mobile.</li>
-              <li>Configurer le CORS du bucket et l’accès public minimal aux objets image.</li>
-            </ul>
-          </article>
+        <div class="status" id="users-status"></div>
+        <div style="overflow:auto">
+          <table>
+            <thead>
+              <tr>
+                <th>Email</th>
+                <th>Role</th>
+                <th>Statut</th>
+                <th>Creation</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="users-body">
+              <tr><td colspan="5" class="hint">Choisis une boutique.</td></tr>
+            </tbody>
+          </table>
         </div>
       </section>
 
@@ -511,6 +503,8 @@
     const loginSubmit = document.getElementById('login-submit');
     const prefillBtn = document.getElementById('prefill-btn');
     const tableStatus = document.getElementById('table-status');
+    const usersPanel = document.getElementById('users-panel');
+    const usersStatus = document.getElementById('users-status');
 
     function isLocalDemo() {
       return ['localhost', '127.0.0.1'].includes(window.location.hostname);
@@ -525,6 +519,11 @@
     function setTableStatus(message = '', kind = '') {
       tableStatus.textContent = message;
       tableStatus.className = 'status' + (message ? ' visible' : '') + (kind ? ' ' + kind : '');
+    }
+
+    function setUsersStatus(message = '', kind = '') {
+      usersStatus.textContent = message;
+      usersStatus.className = 'status' + (message ? ' visible' : '') + (kind ? ' ' + kind : '');
     }
 
     function persistSession() {
@@ -565,6 +564,21 @@
         .replaceAll('"', '&quot;');
     }
 
+    function formatApiError(payload, fallback = 'Erreur API') {
+      const detail = payload?.detail ?? payload?.message ?? payload;
+      if (Array.isArray(detail)) {
+        return detail
+          .map((item) => item?.msg || item?.message || item?.error)
+          .filter(Boolean)
+          .join(' ');
+      }
+      if (typeof detail === 'string') return detail;
+      if (detail && typeof detail === 'object') {
+        return detail.message || detail.msg || detail.error || fallback;
+      }
+      return fallback;
+    }
+
     async function fetchJson(path, options = {}) {
       const res = await fetch(BASE_URL + path, options);
       if (res.status === 401 || res.status === 403) {
@@ -574,7 +588,7 @@
       const isJson = (res.headers.get('content-type') || '').includes('application/json');
       const body = isJson ? await res.json() : null;
       if (!res.ok) {
-        throw new Error(body?.detail || body?.message || ('Erreur HTTP ' + res.status));
+        throw new Error(formatApiError(body, 'Erreur HTTP ' + res.status));
       }
       return body;
     }
@@ -654,6 +668,7 @@
                   ).join('')}
                 </select>
                 <button class="btn" onclick="changePlan('${escapeHtml(company.id)}')">Appliquer le plan</button>
+                <button class="btn" onclick="loadCompanyUsers('${escapeHtml(company.id)}','${escapeHtml(company.name)}')">Utilisateurs</button>
                 <button class="btn" onclick="resetCompanyPassword('${escapeHtml(company.id)}')">Reinitialiser mot de passe</button>
                 <button class="btn ${company.status === 'active' ? 'danger' : ''}" onclick="toggleStatus('${escapeHtml(company.id)}','${escapeHtml(company.status)}')">
                   ${company.status === 'active' ? 'Suspendre' : 'Réactiver'}
@@ -663,6 +678,43 @@
           </tr>
         `;
       }).join('');
+    }
+
+    function renderUsers(users) {
+      const tbody = document.getElementById('users-body');
+      if (!users.length) {
+        tbody.innerHTML = '<tr><td colspan="5" class="hint">Aucun utilisateur trouve.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = users.map((user) => `
+        <tr>
+          <td>
+            <strong>${escapeHtml(user.email)}</strong><br />
+            <span class="hint">${escapeHtml(user.id)}</span>
+          </td>
+          <td>${escapeHtml(user.role || '-')}</td>
+          <td>${statusBadge(user.is_active ? 'active' : 'inactive')}</td>
+          <td>${escapeHtml(formatDate(user.created_at))}</td>
+          <td>
+            <div class="action-row">
+              <button class="btn" onclick="resetUserPassword('${escapeHtml(user.id)}','${escapeHtml(user.email)}')">Reinitialiser mot de passe</button>
+            </div>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    async function loadCompanyUsers(companyId, companyName = '') {
+      usersPanel.classList.remove('hidden');
+      document.getElementById('users-title').textContent = `Utilisateurs - ${companyName || companyId}`;
+      document.getElementById('users-body').innerHTML = '<tr><td colspan="5" class="hint">Chargement...</td></tr>';
+      setUsersStatus('');
+      try {
+        const users = await fetchJson(`/admin/companies/${companyId}/users`, { headers: authHeaders() });
+        renderUsers(users);
+      } catch (error) {
+        setUsersStatus(error.message, 'error');
+      }
     }
 
     async function loadDashboard() {
@@ -734,6 +786,27 @@
       }
     }
 
+    async function resetUserPassword(userId, email) {
+      const password = window.prompt(`Nouveau mot de passe pour ${email}`);
+      if (!password) return;
+      const confirmPassword = window.prompt(`Confirmer le nouveau mot de passe pour ${email}`);
+      if (!confirmPassword) return;
+      setUsersStatus('Reinitialisation du mot de passe en cours...');
+      try {
+        const result = await fetchJson(`/admin/users/${userId}/reset-password`, {
+          method: 'PATCH',
+          headers: authHeaders(),
+          body: JSON.stringify({
+            password,
+            confirm_password: confirmPassword,
+          }),
+        });
+        setUsersStatus(result.message || 'Mot de passe utilisateur reinitialise.', 'success');
+      } catch (error) {
+        setUsersStatus(error.message, 'error');
+      }
+    }
+
     async function login(event) {
       event.preventDefault();
       loginError.textContent = '';
@@ -749,7 +822,7 @@
           }),
         });
         const body = await res.json();
-        if (!res.ok) throw new Error(body?.detail || 'Connexion impossible');
+        if (!res.ok) throw new Error(formatApiError(body, 'Connexion impossible'));
         accessToken = body.access_token;
         persistSession();
         const ok = await ensureSuperadminSession();
@@ -773,6 +846,7 @@
     document.getElementById('login-form').addEventListener('submit', login);
     document.getElementById('refresh-btn').addEventListener('click', () => loadDashboard().catch((error) => setTableStatus(error.message, 'error')));
     document.getElementById('logout-btn').addEventListener('click', () => logout());
+    document.getElementById('close-users-btn').addEventListener('click', () => usersPanel.classList.add('hidden'));
 
     if (isLocalDemo()) {
       prefillBtn.classList.remove('hidden');
@@ -791,7 +865,9 @@
     }
 
     window.changePlan = changePlan;
+    window.loadCompanyUsers = loadCompanyUsers;
     window.resetCompanyPassword = resetCompanyPassword;
+    window.resetUserPassword = resetUserPassword;
     window.toggleStatus = toggleStatus;
 
     (async () => {

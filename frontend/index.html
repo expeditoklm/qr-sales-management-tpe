@@ -482,6 +482,147 @@
       flex: 1;
     }
 
+    /* SEARCH WRAP */
+    .search-wrap {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+    }
+
+    .search-clear-btn {
+      position: absolute;
+      right: 8px;
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: var(--muted);
+      font-size: 0.85rem;
+      display: none;
+      padding: 2px 5px;
+      border-radius: 4px;
+      line-height: 1;
+      transition: color .15s;
+    }
+
+    .search-clear-btn:hover { color: var(--text); }
+
+    /* COMPACT BUTTONS */
+    .btn-sm {
+      padding: 6px 11px;
+      font-size: 0.72rem;
+      border-radius: 10px;
+      gap: 4px;
+      box-shadow: none;
+    }
+
+    /* SALES TABLE IMPROVEMENTS */
+    .sale-ref { color: var(--accent); font-family: var(--font-head); font-size: 0.75rem; font-weight: 700; letter-spacing: 0.02em; }
+    .sale-date { white-space: nowrap; font-size: 0.68rem; }
+    .sale-total { font-weight: 700; color: var(--accent); }
+    .sale-source-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 7px;
+      border-radius: 20px;
+      font-size: 0.62rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--muted);
+    }
+    .sale-source-badge.mobile { background: rgba(15,118,110,.1); color: var(--accent); border-color: rgba(15,118,110,.2); }
+    .table tr:nth-child(even) td { background: rgba(15,118,110,.018); }
+
+    /* PRODUCT ROW IMPROVEMENTS */
+    .prod-thumb {
+      width: 40px;
+      height: 40px;
+      border-radius: 8px;
+      object-fit: cover;
+      border: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .prod-thumb-placeholder {
+      width: 40px;
+      height: 40px;
+      border-radius: 8px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      display: grid;
+      place-items: center;
+      flex-shrink: 0;
+      color: var(--muted);
+      font-size: 1rem;
+    }
+    .prod-name { font-weight: 600; font-size: 0.82rem; }
+    .prod-desc { font-size: 0.63rem; color: var(--muted); margin-top: 2px; line-height: 1.4; }
+
+    /* IMAGE OVERLAY IN MODAL */
+    .img-edit-wrap {
+      position: relative;
+      display: inline-block;
+      cursor: pointer;
+    }
+    .img-edit-overlay {
+      position: absolute;
+      top: -8px;
+      right: -8px;
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      background: var(--grad);
+      border: 2px solid var(--surface);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      font-size: 0.72rem;
+      box-shadow: 0 2px 8px rgba(15,118,110,.35);
+      pointer-events: none;
+    }
+    .img-placeholder {
+      width: 92px;
+      height: 92px;
+      border-radius: 10px;
+      border: 1.5px dashed var(--border);
+      background: var(--bg);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      color: var(--muted);
+      font-size: 0.65rem;
+      text-align: center;
+      transition: border-color .15s;
+    }
+    .img-edit-wrap:hover .img-placeholder { border-color: var(--accent3); }
+    .img-thumb-modal {
+      width: 92px;
+      height: 92px;
+      border-radius: 10px;
+      object-fit: cover;
+      border: 1.5px solid var(--border);
+      display: none;
+    }
+
+    /* LOGOUT MODAL */
+    .logout-modal-icon {
+      font-size: 2.2rem;
+      margin-bottom: 14px;
+    }
+
+    /* SESSION CARD HOVER */
+    .session-brand {
+      transition: opacity .15s;
+      cursor: pointer;
+    }
+    .session-brand:hover { opacity: 0.78; }
+
+    /* SORT BUTTON */
+    #sales-sort-btn { min-width: 76px; }
+
     /* CONFIG BOX */
     .config-box {
       background: var(--bg);
@@ -1207,7 +1348,7 @@
     <aside class="sidebar">
       <div class="logo">Quick<span>SellPay</span></div>
       <div class="session-card" id="session-card">
-        <div class="session-brand">
+        <div class="session-brand" onclick="showPage('profile')" title="Modifier le profil boutique">
           <div class="session-brand-avatar" id="session-avatar">BT</div>
           <div>
             <div class="session-label">Session active</div>
@@ -1323,9 +1464,16 @@
       <div id="page-products" style="display:none">
         <div class="topbar">
           <div class="page-title">Produits</div>
-          <div style="display:flex;gap:10px;align-items:center">
-            <input class="search-bar" placeholder="Rechercher…" oninput="filterProducts(this.value)" />
-            <button class="btn btn-primary" onclick="openProductModal()">+ Ajouter</button>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <div class="search-wrap">
+              <input id="product-search" class="search-bar" placeholder="Rechercher…" oninput="filterProducts(this.value)" style="padding-right:30px" />
+              <button id="product-search-clear" class="search-clear-btn" onclick="clearProductSearch()" aria-label="Effacer">✕</button>
+            </div>
+            <div style="display:flex;gap:5px;align-items:center">
+              <button class="btn btn-primary btn-sm" onclick="openProductModal()">＋ Nouveau</button>
+              <button class="btn btn-ghost btn-sm" onclick="importProducts()" title="Importer un fichier CSV">↑ Importer</button>
+              <button class="btn btn-ghost btn-sm" onclick="shareProducts()" title="Partager le catalogue">↗ Partager</button>
+            </div>
           </div>
         </div>
         <div class="section">
@@ -1353,17 +1501,18 @@
       <div id="page-sales" style="display:none">
         <div class="topbar">
           <div class="page-title">Ventes</div>
-          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+          <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap">
             <select id="sales-period-filter" class="search-bar" onchange="loadSales()">
               <option value="all">Toutes les ventes</option>
-              <option value="daily">Journalières</option>
+              <option value="daily">Journalieres</option>
               <option value="weekly">Hebdomadaires</option>
               <option value="monthly">Mensuelles</option>
             </select>
             <select id="sales-user-filter" class="search-bar hidden" onchange="loadSales()">
-              <option value="">Tous les employés</option>
+              <option value="">Tous les employes</option>
             </select>
-            <button class="btn btn-primary" onclick="openSaleModal()">+ Nouvelle vente</button>
+            <button class="btn btn-ghost btn-sm" onclick="toggleSalesSort()" id="sales-sort-btn" title="Trier par date">↓ Date</button>
+            <button class="btn btn-primary btn-sm" onclick="openSaleModal()">＋ Nouvelle vente</button>
           </div>
         </div>
         <div class="section">
@@ -1482,6 +1631,7 @@
                 </select>
               </div>
               <button class="btn btn-primary" type="submit" id="invite-submit">Creer l'invitation</button>
+              <div class="auth-error" id="invite-form-error"></div>
               <div class="invite-result" id="invite-result">
                 <div class="section-title" style="margin-bottom:8px">Invitation creee</div>
                 <div class="muted-note">Copiez ce lien et envoyez-le a la personne invitee.</div>
@@ -1815,12 +1965,17 @@
       <div class="field"><label>Description</label><textarea id="mp-desc" rows="2"
           placeholder="Description optionnelle…"></textarea></div>
       <div class="field">
-        <label>Image produit (jpg/png/webp)</label>
-        <input type="file" id="mp-image" accept="image/*"
-          style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:9px 12px;color:var(--muted);font-family:var(--font-mono);font-size:0.75rem" />
-        <div id="mp-image-preview" style="margin-top:8px;display:none">
-          <img id="mp-img-thumb" src="" style="max-height:80px;border-radius:6px;border:1px solid var(--border)" />
+        <label>Image produit</label>
+        <input type="file" id="mp-image" accept="image/*" style="display:none" />
+        <div class="img-edit-wrap" onclick="document.getElementById('mp-image').click()" title="Cliquer pour changer l image">
+          <div id="mp-img-placeholder" class="img-placeholder">
+            <span style="font-size:1.4rem;opacity:.45">🖼</span>
+            <span>Ajouter</span>
+          </div>
+          <img id="mp-img-thumb" class="img-thumb-modal" src="" alt="Preview" />
+          <div class="img-edit-overlay">✎</div>
         </div>
+        <span style="display:block;margin-top:6px;font-size:0.65rem;color:var(--muted)">jpg, png, webp — cliquer pour changer</span>
       </div>
       <div class="modal-actions">
         <button class="btn btn-ghost" onclick="closeModal('modal-product')">Annuler</button>
@@ -1847,6 +2002,19 @@
       <div class="modal-actions">
         <button class="btn btn-ghost" onclick="closeModal('modal-sale')">Annuler</button>
         <button class="btn btn-primary" onclick="saveSale()">Valider la vente</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL DECONNEXION -->
+  <div class="overlay" id="modal-logout">
+    <div class="modal" style="width:320px;text-align:center;padding:32px 28px">
+      <div class="logout-modal-icon">👋</div>
+      <div class="modal-title" style="font-size:1.05rem;margin-bottom:8px">Deconnexion</div>
+      <p style="color:var(--muted);font-size:0.8rem;line-height:1.7;margin-bottom:24px">Vous allez quitter votre espace QuickSellPay.</p>
+      <div class="modal-actions" style="justify-content:center;gap:10px">
+        <button class="btn btn-ghost" style="flex:1" onclick="closeModal('modal-logout')">Annuler</button>
+        <button class="btn btn-danger" style="flex:1" onclick="confirmLogout()">Se deconnecter</button>
       </div>
     </div>
   </div>
@@ -2001,6 +2169,21 @@
       document.getElementById('login-error').textContent = message;
     }
 
+    function formatApiError(payload, fallback = 'Erreur API') {
+      const detail = payload?.detail ?? payload?.message ?? payload;
+      if (Array.isArray(detail)) {
+        return detail
+          .map((item) => item?.msg || item?.message || item?.error)
+          .filter(Boolean)
+          .join(' ');
+      }
+      if (typeof detail === 'string') return detail;
+      if (detail && typeof detail === 'object') {
+        return detail.message || detail.msg || detail.error || fallback;
+      }
+      return fallback;
+    }
+
     function showLoginForm() {
       document.getElementById('invite-accept-form').classList.add('hidden');
       document.getElementById('login-form').classList.remove('hidden');
@@ -2078,7 +2261,7 @@
         body: fd,
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.detail || 'Upload logo impossible');
+      if (!res.ok) throw new Error(formatApiError(data, 'Upload logo impossible'));
       sessionState = {
         ...(sessionState || {}),
         company_id: data.company_id || sessionState?.company_id || '',
@@ -2283,7 +2466,7 @@
           body: JSON.stringify(payload),
         });
         const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data.detail || (isRegister ? 'Inscription impossible' : 'Connexion impossible'));
+        if (!res.ok) throw new Error(formatApiError(data, isRegister ? 'Inscription impossible' : 'Connexion impossible'));
         setSession({ ...data, email: isRegister ? identifier : '' });
         if (isRegister && logoFile) {
           await uploadCompanyLogo(logoFile);
@@ -2318,8 +2501,7 @@
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
-          const detail = data.detail?.message || data.detail || 'Invitation impossible';
-          throw new Error(typeof detail === 'string' ? detail : JSON.stringify(detail));
+          throw new Error(formatApiError(data, 'Invitation impossible'));
         }
         setSession(data);
         window.history.replaceState({}, document.title, window.location.pathname);
@@ -2389,9 +2571,11 @@
     }
 
     function logout() {
-      if (!window.confirm('Voulez-vous vraiment vous deconnecter du dashboard web ?')) {
-        return;
-      }
+      document.getElementById('modal-logout').classList.add('show');
+    }
+
+    function confirmLogout() {
+      closeModal('modal-logout');
       clearSession();
       setAuthVisible(true);
       setLoginError('');
@@ -2480,10 +2664,7 @@
       }
       if (!res.ok) {
         const err = await res.json().catch(() => ({ detail: res.statusText }));
-        const detail = Array.isArray(err.detail)
-          ? err.detail.map((item) => item?.msg || JSON.stringify(item)).join(' | ')
-          : (err.detail?.message || err.detail || 'Erreur API');
-        const apiErr = new Error(detail);
+        const apiErr = new Error(formatApiError(err, 'Erreur API'));
         apiErr.status = res.status;
         throw apiErr;
       }
@@ -2561,59 +2742,91 @@
       if (products.length === 0) { tbody.innerHTML = '<tr><td colspan="6" class="empty">Aucun produit</td></tr>'; return; }
       tbody.innerHTML = products.map(p => {
         const status = p.stock === 0 ? 'low' : p.stock < 10 ? 'warn' : 'ok';
-        const label = p.stock === 0 ? 'Rupture' : p.stock < 10 ? 'Faible' : 'OK';
+        const label = p.stock === 0 ? 'Rupture' : p.stock < 10 ? 'Faible' : 'En stock';
+        const stockColor = p.stock === 0 ? 'var(--danger)' : p.stock < 10 ? 'var(--accent2)' : 'var(--accent)';
+        const imgHtml = p.image_url
+          ? `<img class="prod-thumb" src="${BASE_URL + p.image_url}" alt="${escapeHtml(p.name)}">`
+          : `<div class="prod-thumb-placeholder">📦</div>`;
         return `<tr>
-      <td>${p.name}</td>
-      <td class="sku">${p.sku}</td>
-      <td>${fmtPrice(p.price)}</td>
-      <td>${p.stock}</td>
+      <td>
+        <div style="display:flex;align-items:center;gap:10px">
+          ${imgHtml}
+          <div>
+            <div class="prod-name">${escapeHtml(p.name)}</div>
+            ${p.description ? `<div class="prod-desc">${escapeHtml(p.description.substring(0, 50))}${p.description.length > 50 ? '…' : ''}</div>` : ''}
+          </div>
+        </div>
+      </td>
+      <td class="sku">${escapeHtml(p.sku || '—')}</td>
+      <td style="font-weight:600">${fmtPrice(p.price)}</td>
+      <td><span style="font-weight:700;color:${stockColor}">${p.stock}</span></td>
       <td><span class="badge ${status}">${label}</span></td>
-      <td style="display:flex;gap:6px">
-        <button class="btn btn-ghost" style="padding:4px 10px;font-size:0.65rem" onclick='editProduct(${JSON.stringify(p)})'>Éditer</button>
-        <button class="btn btn-danger" style="padding:4px 10px;font-size:0.65rem" onclick="deleteProduct('${p.id}')">✕</button>
+      <td>
+        <div style="display:flex;gap:5px">
+          <button class="btn btn-ghost" style="padding:4px 10px;font-size:0.65rem;border-radius:8px" onclick="editProductById('${p.id}')">✎ Editer</button>
+          <button class="btn btn-danger" style="padding:4px 10px;font-size:0.65rem;border-radius:8px" onclick="deleteProduct('${p.id}')">✕</button>
+        </div>
       </td>
     </tr>`;
       }).join('');
     }
 
+    function editProductById(id) {
+      const p = allProducts.find(x => x.id === id);
+      if (p) editProduct(p);
+    }
+
     function filterProducts(q) {
+      const clearBtn = document.getElementById('product-search-clear');
+      if (clearBtn) clearBtn.style.display = q ? 'block' : 'none';
       const filtered = allProducts.filter(p =>
-        p.name.toLowerCase().includes(q.toLowerCase()) || p.sku.toLowerCase().includes(q.toLowerCase())
+        p.name.toLowerCase().includes(q.toLowerCase()) || (p.sku || '').toLowerCase().includes(q.toLowerCase())
       );
       renderProducts(filtered);
+    }
+
+    function clearProductSearch() {
+      const input = document.getElementById('product-search');
+      if (!input) return;
+      input.value = '';
+      const clearBtn = document.getElementById('product-search-clear');
+      if (clearBtn) clearBtn.style.display = 'none';
+      filterProducts('');
+      input.focus();
     }
 
     function openProductModal() {
       document.getElementById('modal-product-title').textContent = 'Nouveau produit';
       ['mp-id', 'mp-name', 'mp-sku', 'mp-price', 'mp-stock', 'mp-desc'].forEach(id => document.getElementById(id).value = '');
+      document.getElementById('mp-image').value = '';
+      document.getElementById('mp-img-thumb').style.display = 'none';
+      document.getElementById('mp-img-placeholder').style.display = 'flex';
       document.getElementById('modal-product').classList.add('show');
     }
 
     function editProduct(p) {
-  document.getElementById('modal-product-title').textContent = 'Modifier le produit';
-  document.getElementById('mp-id').value = p.id;
-  document.getElementById('mp-name').value = p.name;
-  document.getElementById('mp-sku').value = p.sku;
-  document.getElementById('mp-price').value = p.price;
-  document.getElementById('mp-stock').value = p.stock;
-  document.getElementById('mp-desc').value = p.description || '';
+      document.getElementById('modal-product-title').textContent = 'Modifier le produit';
+      document.getElementById('mp-id').value = p.id;
+      document.getElementById('mp-name').value = p.name;
+      document.getElementById('mp-sku').value = p.sku;
+      document.getElementById('mp-price').value = p.price;
+      document.getElementById('mp-stock').value = p.stock;
+      document.getElementById('mp-desc').value = p.description || '';
+      document.getElementById('mp-image').value = '';
 
-  // ── AJOUT : prévisualiser l'image existante ──────────────
-  const preview = document.getElementById('mp-image-preview');
-  const thumb   = document.getElementById('mp-img-thumb');
-  if (p.image_url) {
-    thumb.src = BASE_URL + p.image_url;
-    preview.style.display = 'block';
-  } else {
-    thumb.src = '';
-    preview.style.display = 'none';
-  }
-  // Réinitialiser le champ fichier
-  document.getElementById('mp-image').value = '';
-  // ────────────────────────────────────────────────────────
-
-  document.getElementById('modal-product').classList.add('show');
-}
+      const thumb = document.getElementById('mp-img-thumb');
+      const placeholder = document.getElementById('mp-img-placeholder');
+      if (p.image_url) {
+        thumb.src = p.image_url.startsWith('http') ? p.image_url : BASE_URL + p.image_url;
+        thumb.style.display = 'block';
+        placeholder.style.display = 'none';
+      } else {
+        thumb.src = '';
+        thumb.style.display = 'none';
+        placeholder.style.display = 'flex';
+      }
+      document.getElementById('modal-product').classList.add('show');
+    }
 
     async function saveProduct() {
       const id = document.getElementById('mp-id').value;
@@ -2672,6 +2885,15 @@
     }
 
     // ─── SALES ──────────────────────────────────────────────
+    let salesSortAsc = false;
+
+    function toggleSalesSort() {
+      salesSortAsc = !salesSortAsc;
+      const btn = document.getElementById('sales-sort-btn');
+      if (btn) btn.textContent = (salesSortAsc ? '↑' : '↓') + ' Date';
+      renderSalesList();
+    }
+
     async function loadSales() {
       try {
         const period = document.getElementById('sales-period-filter')?.value || 'all';
@@ -2680,33 +2902,44 @@
         const params = new URLSearchParams({ period });
         if (userFilter && canManageTeam(sessionState?.role)) params.set('user_id', userFilter);
         allSales = await apiFetch('/api/sales?' + params.toString());
-        const tbody = document.getElementById('sales-tbody');
-        if (allSales.length === 0) { tbody.innerHTML = '<tr><td colspan="9" class="empty">Aucune vente</td></tr>'; return; }
-        tbody.innerHTML = [...allSales].reverse().map(s => {
-          const items = s.items || [];
-          const seller = s.created_by_email || 'Non renseigne';
-          if (!items.length) return `<tr>
-        <td style="color:var(--accent)">${s.reference}</td>
-        <td colspan="4" class="sku">—</td>
-        <td style="font-weight:500;color:var(--accent)">${fmtPrice(s.total)}</td>
-        <td class="sku">${escapeHtml(seller)}</td>
-        <td class="sku">${s.source || 'dashboard'}</td>
-        <td class="sku">${fmtDate(s.created_at)}</td></tr>`;
-          return items.map((it, i) => `<tr>
-        ${i === 0 ? `<td style="color:var(--accent);vertical-align:top" rowspan="${items.length}">${s.reference}</td>` : ''}
-        <td>${it.product_name || it.name || '—'}</td>
-        <td style="text-align:center">${it.quantity || 1}</td>
-        <td>${fmtPrice(it.unit_price || 0)}</td>
-        <td>${fmtPrice(it.subtotal || (it.unit_price || 0) * (it.quantity || 1))}</td>
-        ${i === 0 ? `<td style="vertical-align:top;font-weight:500;color:var(--accent)" rowspan="${items.length}">${fmtPrice(s.total)}</td>
-        <td class="sku" style="vertical-align:top" rowspan="${items.length}">${escapeHtml(seller)}</td>
-        <td class="sku" style="vertical-align:top" rowspan="${items.length}">${s.source || 'dashboard'}</td>
-        <td class="sku" style="vertical-align:top" rowspan="${items.length}">${fmtDate(s.created_at)}</td>` : ''}
-      </tr>`).join('');
-        }).join('');
+        renderSalesList();
       } catch (e) {
         document.getElementById('sales-tbody').innerHTML = `<tr><td colspan="9" class="empty">Erreur : ${e.message}</td></tr>`;
       }
+    }
+
+    function renderSalesList() {
+      const tbody = document.getElementById('sales-tbody');
+      if (!allSales.length) { tbody.innerHTML = '<tr><td colspan="9" class="empty">Aucune vente</td></tr>'; return; }
+      const sorted = [...allSales].sort((a, b) => {
+        const da = new Date(a.created_at || 0).getTime();
+        const db = new Date(b.created_at || 0).getTime();
+        return salesSortAsc ? da - db : db - da;
+      });
+      tbody.innerHTML = sorted.map(s => {
+        const items = s.items || [];
+        const seller = s.created_by_email || 'Non renseigne';
+        const sourceLabel = s.source === 'mobile' || s.source === 'webhook' ? s.source : 'dashboard';
+        const sourceCls = sourceLabel === 'mobile' || sourceLabel === 'webhook' ? 'mobile' : '';
+        if (!items.length) return `<tr>
+        <td><span class="sale-ref">${escapeHtml(s.reference)}</span></td>
+        <td colspan="4" class="sku">—</td>
+        <td class="sale-total">${fmtPrice(s.total)}</td>
+        <td class="sku">${escapeHtml(seller)}</td>
+        <td><span class="sale-source-badge ${sourceCls}">${escapeHtml(sourceLabel)}</span></td>
+        <td class="sale-date">${fmtDate(s.created_at)}</td></tr>`;
+        return items.map((it, i) => `<tr>
+        ${i === 0 ? `<td style="vertical-align:top" rowspan="${items.length}"><span class="sale-ref">${escapeHtml(s.reference)}</span></td>` : ''}
+        <td>${escapeHtml(it.product_name || it.name || '—')}</td>
+        <td style="text-align:center">${it.quantity || 1}</td>
+        <td>${fmtPrice(it.unit_price || 0)}</td>
+        <td>${fmtPrice(it.subtotal || (it.unit_price || 0) * (it.quantity || 1))}</td>
+        ${i === 0 ? `<td class="sale-total" style="vertical-align:top" rowspan="${items.length}">${fmtPrice(s.total)}</td>
+        <td class="sku" style="vertical-align:top" rowspan="${items.length}">${escapeHtml(seller)}</td>
+        <td style="vertical-align:top" rowspan="${items.length}"><span class="sale-source-badge ${sourceCls}">${escapeHtml(sourceLabel)}</span></td>
+        <td class="sale-date" style="vertical-align:top" rowspan="${items.length}">${fmtDate(s.created_at)}</td>` : ''}
+      </tr>`).join('');
+      }).join('');
     }
 
     async function ensureSalesUserFilter() {
@@ -2817,9 +3050,11 @@
       event.preventDefault();
       const submit = document.getElementById('invite-submit');
       const result = document.getElementById('invite-result');
+      const errorNode = document.getElementById('invite-form-error');
       const email = document.getElementById('invite-email').value.trim();
       const role = document.getElementById('invite-role').value;
       result.style.display = 'none';
+      errorNode.textContent = '';
       submit.disabled = true;
       submit.textContent = 'Creation...';
       try {
@@ -2835,7 +3070,7 @@
         toast('Invitation creee', 'ok');
         loadTeam();
       } catch (e) {
-        toast(e.message || 'Invitation impossible', 'err');
+        errorNode.textContent = e.message || 'Invitation impossible';
       } finally {
         submit.disabled = false;
         submit.textContent = "Creer l'invitation";
@@ -3004,7 +3239,18 @@
       loadSales();
     }
 
-    // ─── AUTHENTICITÉ ────────────────────────────────────────────────────────────
+    function importProducts() {
+      toast('Importation CSV — fonctionnalite bientot disponible', 'ok');
+    }
+
+    function shareProducts() {
+      const url = window.location.origin + '/verify';
+      navigator.clipboard.writeText(url)
+        .then(() => toast('Lien catalogue copie dans le presse-papier', 'ok'))
+        .catch(() => toast('Impossible de copier le lien', 'err'));
+    }
+
+    // ─── AUTHENTICITE ────────────────────────────────────────────────
     let lastAuthCodes = [];
 
     function populateAuthSelects() {
@@ -3025,39 +3271,37 @@
       } catch (e) { }
     }
 
-
-async function generateAuthCodes() {
-  const sel = document.getElementById('auth-gen-product');
-  const pid = sel.value;
-  const qty = parseInt(document.getElementById('auth-gen-qty').value) || 1;
-  if (!pid) { toast('Sélectionner un produit', 'err'); return; }
-  try {
-    const res = await apiFetch(`/api/products/${pid}/generate-codes`, {
-      method: 'POST', body: JSON.stringify({ quantity: qty })
-    });
-    // res est un array direct [{id, code, status, ...}, ...]
-    lastAuthCodes = res.map(c => c.code);
-    const pName = sel.options[sel.selectedIndex].text;
-    toast(`${res.length} code(s) générés pour "${pName}"`, 'ok');
-    document.getElementById('auth-codes-grid').innerHTML = res.map(c =>
-      `<span style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:6px 14px;font-family:var(--font-mono);font-size:0.85rem;font-weight:500;color:var(--accent);letter-spacing:0.12em">${c.code}</span>`
-    ).join('');
-    document.getElementById('auth-gen-result').style.display = '';
-    loadAuthStats();
-  } catch(e) { toast(e.message,'err'); }
-}
+    async function generateAuthCodes() {
+      const sel = document.getElementById('auth-gen-product');
+      const pid = sel.value;
+      const qty = parseInt(document.getElementById('auth-gen-qty').value) || 1;
+      if (!pid) { toast('Selectionner un produit', 'err'); return; }
+      try {
+        const res = await apiFetch(`/api/products/${pid}/generate-codes`, {
+          method: 'POST', body: JSON.stringify({ quantity: qty })
+        });
+        lastAuthCodes = res.map(c => c.code);
+        const pName = sel.options[sel.selectedIndex].text;
+        toast(`${res.length} code(s) generes pour "${pName}"`, 'ok');
+        document.getElementById('auth-codes-grid').innerHTML = res.map(c =>
+          `<span style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:6px 14px;font-family:var(--font-mono);font-size:0.85rem;font-weight:500;color:var(--accent);letter-spacing:0.12em">${c.code}</span>`
+        ).join('');
+        document.getElementById('auth-gen-result').style.display = '';
+        loadAuthStats();
+      } catch(e) { toast(e.message, 'err'); }
+    }
 
     function copyAllAuthCodes() {
       navigator.clipboard.writeText(lastAuthCodes.join('\n'));
-      toast('Codes copiés', 'ok');
+      toast('Codes copies', 'ok');
     }
 
     function printAuthCodes() {
       const win = window.open('', '_blank');
-      win.document.write(`<html><head><title>Codes authenticité</title>
+      win.document.write(`<html><head><title>Codes authenticite</title>
   <style>body{font-family:monospace;padding:20px}h2{margin-bottom:16px;font-size:13px}
   .g{display:flex;flex-wrap:wrap;gap:6px}.c{border:1px solid #ccc;border-radius:4px;padding:8px 14px;font-size:16px;font-weight:700}</style>
-  </head><body><h2>Codes d'authenticité — ${new Date().toLocaleDateString('fr-FR')}</h2>
+  </head><body><h2>Codes d'authenticite — ${new Date().toLocaleDateString('fr-FR')}</h2>
   <div class="g">${lastAuthCodes.map(c => `<div class="c">${c}</div>`).join('')}</div></body></html>`);
       win.print();
     }
@@ -3067,12 +3311,11 @@ async function generateAuthCodes() {
       if (!pid) return;
       try {
         const res = await apiFetch(`/api/products/${pid}/codes`);
-        console.log('Premier code:', JSON.stringify(res[0])); 
         const tbody = document.getElementById('auth-codes-tbody');
         if (!res.length) { tbody.innerHTML = '<tr><td colspan="5" class="empty">Aucun code</td></tr>'; return; }
         tbody.innerHTML = res.map(c => `<tr>
   <td style="font-family:var(--font-mono);font-size:0.85rem;font-weight:500;color:var(--accent);letter-spacing:0.12em">${c.code}</td>
-  <td><span class="badge ${c.status === 'used' ? 'low' : 'ok'}">${c.status === 'used' ? 'Utilisé' : 'Disponible'}</span></td>
+  <td><span class="badge ${c.status === 'used' ? 'low' : 'ok'}">${c.status === 'used' ? 'Utilise' : 'Disponible'}</span></td>
   <td class="sku">${c.verified_at ? fmtDate(c.verified_at) : '—'}</td>
   <td class="sku">${c.latitude != null ? c.latitude.toFixed(4) : '—'}</td>
   <td class="sku">${c.longitude != null ? c.longitude.toFixed(4) : '—'}</td>
@@ -3083,17 +3326,16 @@ async function generateAuthCodes() {
     async function loadVerifLogs() {
       try {
         const logs = await apiFetch('/api/authenticity/logs');
-        console.log(logs[0]); // dans loadVerifLogs(), après avoir reçu les logs
         const tbody = document.getElementById('auth-logs-tbody');
-        if (!logs.length) { tbody.innerHTML = '<tr><td colspan="7" class="empty">Aucune vérification</td></tr>'; return; }
+        if (!logs.length) { tbody.innerHTML = '<tr><td colspan="7" class="empty">Aucune verification</td></tr>'; return; }
         tbody.innerHTML = logs.map(l => `<tr class="${!l.is_fraud && l.is_valid ? 'verification-row-ok' : ''}">
       <td style="font-family:var(--font-mono);font-size:0.78rem;letter-spacing:0.1em">${l.code || l.auth_code || l.code_value || '—'}</td>
       <td>${l.product_name || '—'}</td>
-<td><span class="badge ${l.is_fraud ? 'low' : (l.is_valid ? 'ok' : 'warn')}">${l.is_fraud ? 'Fraude' : (l.is_valid ? '✓ Valide' : '✗ Échec')}</span></td>
+      <td><span class="badge ${l.is_fraud ? 'low' : (l.is_valid ? 'ok' : 'warn')}">${l.is_fraud ? 'Fraude' : (l.is_valid ? '✓ Valide' : '✗ Echec')}</span></td>
       <td class="sku">${l.note || '—'}</td>
       <td class="sku">${l.latitude != null ? l.latitude.toFixed(4) : '—'}</td>
       <td class="sku">${l.longitude != null ? l.longitude.toFixed(4) : '—'}</td>
-<td class="sku">${fmtDate(l.verified_at || l.created_at)}</td>
+      <td class="sku">${fmtDate(l.verified_at || l.created_at)}</td>
     </tr>`).join('');
       } catch (e) { }
     }
@@ -3105,16 +3347,17 @@ async function generateAuthCodes() {
         imgInput.addEventListener('change', () => {
           const file = imgInput.files[0];
           if (file) {
-            const preview = document.getElementById('mp-image-preview');
             const thumb = document.getElementById('mp-img-thumb');
+            const placeholder = document.getElementById('mp-img-placeholder');
             thumb.src = URL.createObjectURL(file);
-            preview.style.display = 'block';
+            thumb.style.display = 'block';
+            placeholder.style.display = 'none';
           }
         });
       }
     });
 
-    // ─── INIT ────────────────────────────────────────────────
+    // ─── INIT ────────────────────────────────────────────────────────
     document.getElementById('webhook-url').value = BASE_URL + '/api/webhook/sale';
     document.getElementById('login-form').addEventListener('submit', login);
     document.getElementById('invite-accept-form').addEventListener('submit', acceptInvite);
@@ -3160,4 +3403,3 @@ async function generateAuthCodes() {
 </body>
 
 </html>
-

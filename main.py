@@ -587,6 +587,11 @@ def invite_user(
     current: Annotated[TokenData, Depends(get_admin_user)],
 ):
     """Invite un employé dans la boutique (admin requis)."""
+    existing_user = db.get_user_by_email(payload.email)
+    if existing_user:
+        if existing_user["company_id"] == current.company_id:
+            raise HTTPException(409, "Cet email est deja rattache a votre boutique")
+        raise HTTPException(409, "Cet email est deja utilise sur la plateforme")
     check_user_quota(current.company_id)
     token = create_invite_token(current.company_id, payload.email, payload.role)
     _audit(
@@ -987,6 +992,38 @@ def admin_set_plan(
 @app.get("/admin/stats", tags=["Admin"])
 def admin_stats(_: Annotated[TokenData, Depends(get_superadmin_user)]):
     return db.global_stats()
+
+
+@app.get("/admin/companies/{company_id}/users", response_model=List[UserOut], tags=["Admin"])
+def admin_list_company_users(
+    company_id: str,
+    _: Annotated[TokenData, Depends(get_superadmin_user)],
+):
+    if not db.get_company(company_id):
+        raise HTTPException(404, "Boutique introuvable")
+    return db.list_users_for_company(company_id)
+
+
+@app.patch("/admin/users/{user_id}/reset-password", tags=["Admin"])
+def admin_reset_user_password(
+    user_id: str,
+    payload: AdminResetPasswordRequest,
+    _: Annotated[TokenData, Depends(get_superadmin_user)],
+):
+    _ensure_password_confirmation(payload.password, payload.confirm_password)
+    user = db.get_user_by_id(user_id)
+    if not user:
+        raise HTTPException(404, "Utilisateur introuvable")
+    if user["role"] == "superadmin":
+        raise HTTPException(400, "Utilisez la configuration superadmin pour ce compte")
+    db.update_user_password(user_id, hash_password(payload.password))
+    db.clear_password_reset_tokens_for_user(user_id)
+    return {
+        "message": f"Mot de passe reinitialise pour {user['email']}",
+        "company_id": user["company_id"],
+        "user_id": user_id,
+        "user_email": user["email"],
+    }
 
 
 @app.patch("/admin/companies/{company_id}/reset-password", tags=["Admin"])
@@ -1470,12 +1507,7 @@ async def _do_verify(code_raw: str, latitude, longitude, request: Request,
     if company_id:
         candidates = [company_id]
     else:
-        # Lister toutes les bases tenant
-        from config import get_settings as _cfg
-        candidates = [
-            f.stem[4:]  # erp_{company_id}.db → company_id
-            for f in _cfg().DATA_DIR.glob("erp_*.db")
-        ]
+        candidates = db.tenant_ids()
 
     for cid in candidates:
         ac = db.get_auth_code_by_value(cid, code)
@@ -1636,9 +1668,7 @@ async def verify_v2(payload: VerifyRequest, request: Request):
 def preview_code(code: str):
     """Aperçu du produit avant vérification (ne consomme pas le code)."""
     clean = code.strip().upper()
-    from config import get_settings as _cfg
-    for db_file in _cfg().DATA_DIR.glob("erp_*.db"):
-        cid = db_file.stem[4:]
+    for cid in db.tenant_ids():
         ac  = db.get_auth_code_by_value(cid, clean)
         if ac:
             p = db.get_product(cid, ac["product_id"])
