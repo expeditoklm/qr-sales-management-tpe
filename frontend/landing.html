@@ -1,0 +1,1780 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>QuickSellPay — Caisse & Gestion TPE au Bénin</title>
+  <meta name="description" content="QuickSellPay : caisse POS mobile, gestion de stock, facturation MECeF, vérification QR des produits et abonnements flexibles pour les TPE au Bénin." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet" />
+  <style>
+    /* ════════════════════════════════
+       VARIABLES & RESET
+    ════════════════════════════════ */
+    :root {
+      --bg:       #edf3fa;
+      --surface:  #f8fbff;
+      --surface2: #eef5fb;
+      --border:   #d7e2f2;
+      --accent:   #0f766e;
+      --accent2:  #ff8a1f;
+      --accent3:  #22c1c3;
+      --danger:   #d64545;
+      --text:     #0f172a;
+      --muted:    #64748b;
+      --grad:     linear-gradient(135deg, #0f766e 0%, #14b8a6 52%, #5eead4 100%);
+      --grad-warm:linear-gradient(135deg, #ffd15c 0%, #ff9f1c 55%, #ff7a18 100%);
+      --grad-dark:linear-gradient(135deg, #0f172a 0%, #1e3a5f 60%, #1565d8 100%);
+      --font-head:'Space Grotesk', sans-serif;
+      --font-body:'Manrope', sans-serif;
+      --radius:   16px;
+      --shadow:   0 8px 32px rgba(15,118,110,.12);
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font-body);
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+    a { color: inherit; text-decoration: none; }
+    img { max-width: 100%; display: block; }
+
+    /* ════════════════════════════════
+       NAVBAR
+    ════════════════════════════════ */
+    .navbar {
+      position: sticky;
+      top: 0;
+      z-index: 999;
+      background: rgba(248,251,255,.92);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-bottom: 1px solid var(--border);
+      padding: 0 24px;
+    }
+    .navbar-inner {
+      max-width: 1140px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      height: 64px;
+      gap: 32px;
+    }
+    .nav-logo {
+      font-family: var(--font-head);
+      font-weight: 700;
+      font-size: 1.15rem;
+      letter-spacing: -.03em;
+      background: var(--grad);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+      flex-shrink: 0;
+    }
+    .nav-links {
+      display: flex;
+      gap: 4px;
+      list-style: none;
+      flex: 1;
+    }
+    .nav-links a {
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-size: .88rem;
+      font-weight: 500;
+      color: var(--muted);
+      transition: background .15s, color .15s;
+    }
+    .nav-links a:hover { background: var(--surface2); color: var(--text); }
+    .nav-cta {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+    .btn-ghost {
+      padding: 8px 18px;
+      border: 1.5px solid var(--border);
+      border-radius: 10px;
+      font-size: .88rem;
+      font-weight: 600;
+      color: var(--text);
+      background: transparent;
+      cursor: pointer;
+      transition: border-color .15s, background .15s;
+      font-family: var(--font-body);
+    }
+    .btn-ghost:hover { border-color: var(--accent); background: #f0fdfb; }
+    .btn-primary {
+      padding: 8px 20px;
+      border: none;
+      border-radius: 10px;
+      font-size: .88rem;
+      font-weight: 700;
+      background: var(--grad);
+      color: #fff;
+      cursor: pointer;
+      transition: opacity .15s, transform .1s;
+      font-family: var(--font-body);
+    }
+    .btn-primary:hover { opacity: .88; transform: translateY(-1px); }
+    .hamburger {
+      display: none;
+      flex-direction: column;
+      gap: 5px;
+      cursor: pointer;
+      padding: 6px;
+      background: none;
+      border: none;
+      margin-left: auto;
+    }
+    .hamburger span {
+      width: 22px; height: 2px;
+      background: var(--text);
+      border-radius: 2px;
+      transition: transform .2s;
+    }
+    .mobile-menu {
+      display: none;
+      flex-direction: column;
+      padding: 16px 24px 20px;
+      border-top: 1px solid var(--border);
+      gap: 8px;
+      background: var(--surface);
+    }
+    .mobile-menu.open { display: flex; }
+    .mobile-menu a {
+      padding: 10px 14px;
+      border-radius: 10px;
+      font-weight: 600;
+      color: var(--text);
+      font-size: .95rem;
+    }
+    .mobile-menu a:hover { background: var(--surface2); }
+    .mobile-menu .divider { height: 1px; background: var(--border); margin: 4px 0; }
+    @media (max-width: 768px) {
+      .nav-links, .nav-cta { display: none; }
+      .hamburger { display: flex; }
+    }
+
+    /* ════════════════════════════════
+       HERO
+    ════════════════════════════════ */
+    .hero {
+      position: relative;
+      min-height: 92vh;
+      display: flex;
+      align-items: center;
+      overflow: hidden;
+      padding: 80px 24px 60px;
+      background:
+        radial-gradient(ellipse at 70% 20%, rgba(20,184,166,.18) 0%, transparent 50%),
+        radial-gradient(ellipse at 10% 80%, rgba(255,138,31,.12) 0%, transparent 45%),
+        radial-gradient(ellipse at 50% 110%, rgba(21,101,216,.10) 0%, transparent 40%),
+        var(--bg);
+    }
+    .hero-inner {
+      max-width: 1140px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 60px;
+      align-items: center;
+      width: 100%;
+    }
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      background: rgba(15,118,110,.10);
+      border: 1px solid rgba(15,118,110,.22);
+      border-radius: 100px;
+      padding: 5px 14px 5px 8px;
+      font-size: .78rem;
+      font-weight: 700;
+      color: var(--accent);
+      margin-bottom: 20px;
+    }
+    .hero-badge-dot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: var(--accent);
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(15,118,110,.5); }
+      50% { box-shadow: 0 0 0 6px rgba(15,118,110,0); }
+    }
+    .hero h1 {
+      font-family: var(--font-head);
+      font-size: clamp(2.2rem, 5vw, 3.4rem);
+      font-weight: 700;
+      letter-spacing: -.04em;
+      line-height: 1.1;
+      margin-bottom: 20px;
+    }
+    .hero h1 .accent-text {
+      background: var(--grad);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+    .hero-sub {
+      font-size: 1.05rem;
+      color: var(--muted);
+      max-width: 460px;
+      line-height: 1.7;
+      margin-bottom: 36px;
+    }
+    .hero-actions {
+      display: flex;
+      gap: 14px;
+      flex-wrap: wrap;
+    }
+    .btn-hero {
+      display: inline-flex;
+      align-items: center;
+      gap: 9px;
+      padding: 14px 28px;
+      border-radius: 12px;
+      font-weight: 700;
+      font-size: 1rem;
+      cursor: pointer;
+      font-family: var(--font-body);
+      border: none;
+      transition: transform .15s, box-shadow .15s, opacity .15s;
+    }
+    .btn-hero:hover { transform: translateY(-2px); }
+    .btn-hero-primary {
+      background: var(--grad);
+      color: #fff;
+      box-shadow: 0 6px 24px rgba(15,118,110,.30);
+    }
+    .btn-hero-primary:hover { box-shadow: 0 10px 32px rgba(15,118,110,.40); }
+    .btn-hero-secondary {
+      background: var(--surface);
+      color: var(--text);
+      border: 1.5px solid var(--border);
+      box-shadow: 0 2px 12px rgba(0,0,0,.06);
+    }
+    .btn-hero-secondary:hover { border-color: var(--accent); }
+    .hero-trust {
+      margin-top: 40px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: .85rem;
+      color: var(--muted);
+    }
+    .trust-avatars {
+      display: flex;
+    }
+    .trust-avatars span {
+      width: 32px; height: 32px;
+      border-radius: 50%;
+      border: 2.5px solid var(--surface);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: .7rem;
+      font-weight: 700;
+      color: #fff;
+      margin-left: -8px;
+    }
+    .trust-avatars span:first-child { margin-left: 0; }
+    .a1 { background: #0f766e; }
+    .a2 { background: #1565d8; }
+    .a3 { background: #ff8a1f; }
+    .a4 { background: #7c3aed; }
+
+    /* Phone mockup */
+    .hero-visual {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      position: relative;
+    }
+    .phone-wrap {
+      position: relative;
+      width: 240px;
+    }
+    .phone-shell {
+      width: 240px;
+      height: 490px;
+      background: #0f172a;
+      border-radius: 40px;
+      border: 6px solid #1e293b;
+      position: relative;
+      overflow: hidden;
+      box-shadow:
+        0 40px 80px rgba(15,23,42,.40),
+        0 0 0 1px rgba(255,255,255,.06),
+        inset 0 1px 0 rgba(255,255,255,.12);
+    }
+    .phone-notch {
+      position: absolute;
+      top: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 88px; height: 24px;
+      background: #0f172a;
+      border-radius: 0 0 18px 18px;
+      z-index: 10;
+    }
+    .phone-screen {
+      width: 100%; height: 100%;
+      background: linear-gradient(160deg, #edf3fa 0%, #f0fdfb 100%);
+      display: flex;
+      flex-direction: column;
+      padding: 34px 14px 14px;
+      gap: 8px;
+    }
+    .ps-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 4px;
+    }
+    .ps-title {
+      font-family: var(--font-head);
+      font-size: .65rem;
+      font-weight: 700;
+      color: var(--text);
+      letter-spacing: -.02em;
+    }
+    .ps-badge {
+      font-size: .52rem;
+      font-weight: 700;
+      background: var(--grad);
+      color: #fff;
+      padding: 2px 7px;
+      border-radius: 20px;
+    }
+    .ps-card {
+      background: #fff;
+      border-radius: 12px;
+      padding: 10px 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,.07);
+    }
+    .ps-card-label { font-size: .5rem; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 2px; }
+    .ps-card-val { font-family: var(--font-head); font-size: .9rem; font-weight: 700; color: var(--text); }
+    .ps-card-sub { font-size: .48rem; color: #22c55e; font-weight: 700; }
+    .ps-row { display: flex; gap: 7px; }
+    .ps-row .ps-card { flex: 1; }
+    .ps-item {
+      background: #fff;
+      border-radius: 10px;
+      padding: 7px 10px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      box-shadow: 0 1px 4px rgba(0,0,0,.06);
+    }
+    .ps-item-dot {
+      width: 28px; height: 28px;
+      border-radius: 8px;
+      flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .ps-item-dot svg { width: 14px; height: 14px; }
+    .ps-item-info { flex: 1; }
+    .ps-item-name { font-size: .55rem; font-weight: 700; color: var(--text); }
+    .ps-item-qty  { font-size: .47rem; color: var(--muted); }
+    .ps-item-price{ font-size: .6rem; font-weight: 700; color: var(--accent); }
+    .ps-btn {
+      margin-top: 4px;
+      background: var(--grad);
+      color: #fff;
+      border-radius: 10px;
+      padding: 8px;
+      text-align: center;
+      font-size: .6rem;
+      font-weight: 700;
+      font-family: var(--font-head);
+      box-shadow: 0 3px 12px rgba(15,118,110,.30);
+    }
+    /* floating cards around phone */
+    .float-card {
+      position: absolute;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 10px 14px;
+      box-shadow: 0 8px 24px rgba(0,0,0,.10);
+      font-size: .8rem;
+      min-width: 130px;
+      animation: floatY 4s ease-in-out infinite;
+    }
+    .float-card.left  { left: -110px; top: 25%; animation-delay: 0s; }
+    .float-card.right { right: -110px; bottom: 28%; animation-delay: 1.5s; }
+    @keyframes floatY {
+      0%, 100% { transform: translateY(0); }
+      50%       { transform: translateY(-8px); }
+    }
+    .fc-label { font-size: .65rem; color: var(--muted); font-weight: 600; margin-bottom: 3px; }
+    .fc-val { font-family: var(--font-head); font-weight: 700; font-size: .95rem; color: var(--text); }
+    .fc-tag { display: inline-block; margin-top: 4px; font-size: .6rem; font-weight: 700; padding: 2px 8px; border-radius: 20px; }
+    .fc-green { background: #dcfce7; color: #15803d; }
+    .fc-orange { background: #fff7ed; color: #c2410c; }
+    @media (max-width: 980px) {
+      .float-card { display: none; }
+    }
+    @media (max-width: 820px) {
+      .hero-inner { grid-template-columns: 1fr; text-align: center; }
+      .hero-sub, .hero h1 { max-width: 100%; }
+      .hero-actions { justify-content: center; }
+      .hero-trust { justify-content: center; }
+      .hero-visual { margin-top: 20px; }
+    }
+
+    /* ════════════════════════════════
+       STATS BAR
+    ════════════════════════════════ */
+    .stats-bar {
+      background: #fff;
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+      padding: 28px 24px;
+    }
+    .stats-inner {
+      max-width: 1140px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 0;
+    }
+    .stat-item {
+      text-align: center;
+      padding: 0 20px;
+      border-right: 1px solid var(--border);
+    }
+    .stat-item:last-child { border-right: none; }
+    .stat-num {
+      font-family: var(--font-head);
+      font-size: 2rem;
+      font-weight: 700;
+      letter-spacing: -.04em;
+      background: var(--grad);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+    .stat-label { font-size: .82rem; color: var(--muted); font-weight: 500; margin-top: 2px; }
+    @media (max-width: 600px) {
+      .stats-inner { grid-template-columns: 1fr 1fr; gap: 1px; }
+      .stat-item { border-right: none; border-bottom: 1px solid var(--border); padding: 16px; }
+      .stat-item:nth-child(odd) { border-right: 1px solid var(--border); }
+      .stat-item:nth-last-child(-n+2) { border-bottom: none; }
+    }
+
+    /* ════════════════════════════════
+       SECTIONS LAYOUT
+    ════════════════════════════════ */
+    section { padding: 80px 24px; }
+    .section-inner { max-width: 1140px; margin: 0 auto; }
+    .section-eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      font-size: .78rem;
+      font-weight: 700;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 12px;
+    }
+    .section-eyebrow::before {
+      content: '';
+      display: block;
+      width: 18px; height: 2px;
+      background: var(--accent);
+      border-radius: 2px;
+    }
+    .section-title {
+      font-family: var(--font-head);
+      font-size: clamp(1.6rem, 3.5vw, 2.4rem);
+      font-weight: 700;
+      letter-spacing: -.04em;
+      margin-bottom: 12px;
+      line-height: 1.2;
+    }
+    .section-sub {
+      color: var(--muted);
+      font-size: .98rem;
+      max-width: 520px;
+      line-height: 1.7;
+      margin-bottom: 48px;
+    }
+    .section-title .accent-text {
+      background: var(--grad);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+
+    /* ════════════════════════════════
+       FEATURES
+    ════════════════════════════════ */
+    #fonctionnalites { background: var(--surface); }
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+    }
+    .feature-card {
+      background: var(--bg);
+      border: 1.5px solid var(--border);
+      border-radius: 20px;
+      padding: 28px 24px;
+      transition: transform .15s, box-shadow .15s, border-color .15s;
+    }
+    .feature-card:hover {
+      transform: translateY(-3px);
+      box-shadow: var(--shadow);
+      border-color: rgba(15,118,110,.25);
+    }
+    .feature-icon {
+      width: 48px; height: 48px;
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 18px;
+      flex-shrink: 0;
+    }
+    .feature-icon svg { width: 24px; height: 24px; }
+    .feature-card h3 {
+      font-family: var(--font-head);
+      font-size: 1rem;
+      font-weight: 700;
+      margin-bottom: 8px;
+      letter-spacing: -.02em;
+    }
+    .feature-card p { font-size: .88rem; color: var(--muted); line-height: 1.65; }
+    @media (max-width: 880px) { .features-grid { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 560px) { .features-grid { grid-template-columns: 1fr; } }
+
+    /* ════════════════════════════════
+       HOW IT WORKS
+    ════════════════════════════════ */
+    #comment { background: var(--bg); }
+    .steps-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 32px;
+      position: relative;
+    }
+    .steps-grid::before {
+      content: '';
+      position: absolute;
+      top: 28px;
+      left: calc(16.66% + 28px);
+      right: calc(16.66% + 28px);
+      height: 2px;
+      background: linear-gradient(90deg, var(--accent), var(--accent3));
+      opacity: .3;
+    }
+    .step-item { text-align: center; padding: 0 16px; }
+    .step-num {
+      width: 56px; height: 56px;
+      border-radius: 50%;
+      background: var(--grad);
+      color: #fff;
+      font-family: var(--font-head);
+      font-weight: 700;
+      font-size: 1.2rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 18px;
+      box-shadow: 0 4px 16px rgba(15,118,110,.25);
+    }
+    .step-item h3 {
+      font-family: var(--font-head);
+      font-size: 1.02rem;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    .step-item p { font-size: .88rem; color: var(--muted); line-height: 1.6; }
+    @media (max-width: 680px) {
+      .steps-grid { grid-template-columns: 1fr; gap: 24px; }
+      .steps-grid::before { display: none; }
+    }
+
+    /* ════════════════════════════════
+       PRICING
+    ════════════════════════════════ */
+    #tarifs { background: var(--surface); }
+    .plans-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 18px;
+    }
+    .plan-card {
+      background: var(--bg);
+      border: 1.5px solid var(--border);
+      border-radius: 22px;
+      padding: 28px 22px 24px;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      overflow: hidden;
+      transition: transform .15s, box-shadow .15s;
+    }
+    .plan-card:hover { transform: translateY(-3px); box-shadow: var(--shadow); }
+    .plan-card.featured {
+      background: #fff;
+      border-color: var(--accent);
+      border-width: 2px;
+      box-shadow: 0 8px 40px rgba(15,118,110,.15);
+    }
+    .plan-featured-badge {
+      position: absolute;
+      top: 0; right: 24px;
+      background: var(--grad);
+      color: #fff;
+      font-size: .65rem;
+      font-weight: 700;
+      padding: 4px 12px;
+      border-radius: 0 0 10px 10px;
+    }
+    .plan-name {
+      font-family: var(--font-head);
+      font-size: .82rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      color: var(--muted);
+      margin-bottom: 10px;
+    }
+    .plan-price {
+      font-family: var(--font-head);
+      font-size: 2rem;
+      font-weight: 700;
+      letter-spacing: -.04em;
+      color: var(--text);
+      margin-bottom: 2px;
+    }
+    .plan-price .currency { font-size: 1rem; vertical-align: top; margin-top: 6px; display: inline-block; }
+    .plan-price .period { font-size: .75rem; color: var(--muted); font-weight: 500; }
+    .plan-desc { font-size: .83rem; color: var(--muted); margin: 10px 0 18px; line-height: 1.55; }
+    .plan-divider { height: 1px; background: var(--border); margin-bottom: 18px; }
+    .plan-features { list-style: none; display: flex; flex-direction: column; gap: 9px; flex: 1; }
+    .plan-features li {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      font-size: .85rem;
+      color: var(--text);
+    }
+    .plan-features li::before {
+      content: '';
+      width: 18px; height: 18px;
+      border-radius: 50%;
+      background: rgba(15,118,110,.12);
+      flex-shrink: 0;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 18 18'%3E%3Cpath d='M4 9l3.5 3.5L14 6' stroke='%230f766e' stroke-width='2' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+      background-size: 100%;
+    }
+    .plan-btn {
+      margin-top: 22px;
+      padding: 11px 0;
+      border-radius: 11px;
+      font-weight: 700;
+      font-size: .9rem;
+      text-align: center;
+      cursor: pointer;
+      font-family: var(--font-body);
+      border: none;
+      transition: opacity .15s, transform .1s;
+    }
+    .plan-btn:hover { opacity: .88; transform: translateY(-1px); }
+    .plan-btn.primary { background: var(--grad); color: #fff; box-shadow: 0 4px 18px rgba(15,118,110,.25); }
+    .plan-btn.outline { background: transparent; color: var(--accent); border: 1.5px solid var(--accent); }
+    .plan-btn.muted   { background: var(--surface2); color: var(--muted); border: 1.5px solid var(--border); }
+    @media (max-width: 900px) { .plans-grid { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 560px) { .plans-grid { grid-template-columns: 1fr; } }
+
+    /* ════════════════════════════════
+       VERIFY
+    ════════════════════════════════ */
+    #verifier {
+      background:
+        radial-gradient(ellipse at 70% 50%, rgba(20,184,166,.12) 0%, transparent 55%),
+        var(--bg);
+    }
+    .verify-layout {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 60px;
+      align-items: center;
+    }
+    .verify-form-card {
+      background: var(--surface);
+      border: 1.5px solid var(--border);
+      border-radius: 24px;
+      padding: 36px 32px;
+      box-shadow: 0 8px 40px rgba(0,0,0,.07);
+    }
+    .verify-form-card h3 {
+      font-family: var(--font-head);
+      font-size: 1.3rem;
+      font-weight: 700;
+      margin-bottom: 8px;
+      letter-spacing: -.03em;
+    }
+    .verify-form-card p { font-size: .88rem; color: var(--muted); margin-bottom: 24px; line-height: 1.6; }
+    .input-group { display: flex; gap: 10px; }
+    .input-field {
+      flex: 1;
+      padding: 12px 16px;
+      border: 1.5px solid var(--border);
+      border-radius: 11px;
+      font-family: var(--font-body);
+      font-size: .9rem;
+      background: var(--bg);
+      color: var(--text);
+      outline: none;
+      transition: border-color .15s;
+    }
+    .input-field:focus { border-color: var(--accent); background: #fff; }
+    .input-field::placeholder { color: var(--muted); }
+    .btn-verify {
+      padding: 12px 22px;
+      background: var(--grad);
+      color: #fff;
+      border: none;
+      border-radius: 11px;
+      font-family: var(--font-body);
+      font-weight: 700;
+      font-size: .9rem;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: opacity .15s;
+    }
+    .btn-verify:hover { opacity: .88; }
+    .verify-note { margin-top: 14px; font-size: .78rem; color: var(--muted); }
+    .verify-alt-link { color: var(--accent); font-weight: 600; cursor: pointer; }
+    .verify-visual { display: flex; flex-direction: column; gap: 18px; }
+    .verify-step {
+      display: flex;
+      align-items: flex-start;
+      gap: 16px;
+    }
+    .vs-icon {
+      width: 44px; height: 44px;
+      border-radius: 12px;
+      background: rgba(15,118,110,.10);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .vs-icon svg { width: 22px; height: 22px; color: var(--accent); }
+    .vs-text h4 { font-family: var(--font-head); font-size: .95rem; font-weight: 700; margin-bottom: 3px; }
+    .vs-text p  { font-size: .85rem; color: var(--muted); line-height: 1.55; }
+    @media (max-width: 800px) {
+      .verify-layout { grid-template-columns: 1fr; }
+      .verify-visual { display: none; }
+    }
+
+    /* ════════════════════════════════
+       DOWNLOAD
+    ════════════════════════════════ */
+    #telecharger {
+      background: var(--surface);
+    }
+    .download-layout {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 60px;
+      align-items: center;
+    }
+    .download-card {
+      background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 60%, #0f766e 100%);
+      border-radius: 28px;
+      padding: 44px 40px;
+      color: #fff;
+      position: relative;
+      overflow: hidden;
+    }
+    .download-card::before {
+      content: '';
+      position: absolute;
+      top: -40px; right: -40px;
+      width: 200px; height: 200px;
+      border-radius: 50%;
+      background: rgba(255,255,255,.04);
+    }
+    .download-card::after {
+      content: '';
+      position: absolute;
+      bottom: -60px; left: 20px;
+      width: 160px; height: 160px;
+      border-radius: 50%;
+      background: rgba(20,184,166,.12);
+    }
+    .download-card h3 {
+      font-family: var(--font-head);
+      font-size: 1.5rem;
+      font-weight: 700;
+      margin-bottom: 10px;
+      letter-spacing: -.03em;
+      position: relative;
+      z-index: 1;
+    }
+    .download-card p {
+      font-size: .9rem;
+      opacity: .75;
+      margin-bottom: 28px;
+      line-height: 1.65;
+      position: relative;
+      z-index: 1;
+    }
+    .download-btn-main {
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      background: #fff;
+      color: var(--text);
+      padding: 14px 28px;
+      border-radius: 14px;
+      font-weight: 700;
+      font-size: 1rem;
+      cursor: pointer;
+      text-decoration: none;
+      transition: transform .15s, box-shadow .15s;
+      position: relative;
+      z-index: 1;
+    }
+    .download-btn-main:hover { transform: translateY(-2px); box-shadow: 0 8px 28px rgba(0,0,0,.25); }
+    .download-btn-main svg { width: 22px; height: 22px; color: #22c55e; }
+    .download-meta {
+      margin-top: 20px;
+      font-size: .78rem;
+      opacity: .60;
+      position: relative;
+      z-index: 1;
+    }
+    .download-archs {
+      margin-top: 16px;
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      position: relative;
+      z-index: 1;
+    }
+    .arch-btn {
+      padding: 6px 14px;
+      border: 1px solid rgba(255,255,255,.22);
+      border-radius: 20px;
+      font-size: .75rem;
+      font-weight: 600;
+      color: rgba(255,255,255,.80);
+      cursor: pointer;
+      background: rgba(255,255,255,.07);
+      transition: background .15s, border-color .15s;
+    }
+    .arch-btn:hover { background: rgba(255,255,255,.15); border-color: rgba(255,255,255,.45); }
+    .download-steps {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+    .dl-step {
+      display: flex;
+      gap: 18px;
+      align-items: flex-start;
+    }
+    .dl-step-num {
+      width: 36px; height: 36px;
+      border-radius: 10px;
+      background: rgba(15,118,110,.10);
+      color: var(--accent);
+      font-family: var(--font-head);
+      font-weight: 700;
+      font-size: .9rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .dl-step-text h4 { font-size: .95rem; font-weight: 700; font-family: var(--font-head); margin-bottom: 3px; }
+    .dl-step-text p  { font-size: .85rem; color: var(--muted); line-height: 1.55; }
+    @media (max-width: 800px) { .download-layout { grid-template-columns: 1fr; } }
+
+    /* ════════════════════════════════
+       AUTH CTA
+    ════════════════════════════════ */
+    #connexion {
+      background: var(--bg);
+    }
+    .auth-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      max-width: 760px;
+      margin: 0 auto;
+    }
+    .auth-card {
+      background: var(--surface);
+      border: 1.5px solid var(--border);
+      border-radius: 24px;
+      padding: 36px 28px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      gap: 0;
+      transition: transform .15s, box-shadow .15s;
+    }
+    .auth-card:hover { transform: translateY(-3px); box-shadow: var(--shadow); }
+    .auth-card.admin {
+      background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 100%);
+      border-color: #1e3a5f;
+      color: #fff;
+    }
+    .auth-icon {
+      width: 64px; height: 64px;
+      border-radius: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 18px;
+    }
+    .auth-icon svg { width: 30px; height: 30px; }
+    .auth-card h3 {
+      font-family: var(--font-head);
+      font-size: 1.2rem;
+      font-weight: 700;
+      margin-bottom: 8px;
+      letter-spacing: -.02em;
+    }
+    .auth-card p {
+      font-size: .88rem;
+      color: var(--muted);
+      margin-bottom: 24px;
+      line-height: 1.6;
+    }
+    .auth-card.admin p { color: rgba(255,255,255,.60); }
+    .auth-card .auth-btn {
+      width: 100%;
+      padding: 12px;
+      border-radius: 12px;
+      font-weight: 700;
+      font-size: .95rem;
+      cursor: pointer;
+      font-family: var(--font-body);
+      border: none;
+      transition: opacity .15s, transform .1s;
+      display: block;
+      text-align: center;
+    }
+    .auth-btn.teal { background: var(--grad); color: #fff; box-shadow: 0 4px 18px rgba(15,118,110,.25); }
+    .auth-btn.white { background: #fff; color: #0f172a; box-shadow: 0 4px 18px rgba(0,0,0,.15); }
+    .auth-btn:hover { opacity: .88; transform: translateY(-1px); }
+    .auth-register-link {
+      margin-top: 12px;
+      font-size: .82rem;
+      color: var(--muted);
+    }
+    .auth-register-link a { color: var(--accent); font-weight: 600; }
+    @media (max-width: 600px) { .auth-grid { grid-template-columns: 1fr; } }
+
+    /* ════════════════════════════════
+       FAQ
+    ════════════════════════════════ */
+    #faq { background: var(--surface); }
+    .faq-list { max-width: 700px; display: flex; flex-direction: column; gap: 0; }
+    .faq-item {
+      border-bottom: 1px solid var(--border);
+    }
+    .faq-item:first-child { border-top: 1px solid var(--border); }
+    .faq-q {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 18px 0;
+      cursor: pointer;
+      gap: 16px;
+    }
+    .faq-q span {
+      font-weight: 600;
+      font-size: .95rem;
+      color: var(--text);
+    }
+    .faq-arrow {
+      width: 22px; height: 22px;
+      border-radius: 6px;
+      background: var(--surface2);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: transform .2s, background .15s;
+    }
+    .faq-arrow svg { width: 14px; height: 14px; color: var(--muted); }
+    .faq-item.open .faq-arrow { transform: rotate(180deg); background: rgba(15,118,110,.12); }
+    .faq-item.open .faq-arrow svg { color: var(--accent); }
+    .faq-a {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height .25s ease;
+    }
+    .faq-a-inner {
+      padding: 0 0 18px;
+      font-size: .9rem;
+      color: var(--muted);
+      line-height: 1.7;
+    }
+    .faq-item.open .faq-a { max-height: 300px; }
+
+    /* ════════════════════════════════
+       FOOTER
+    ════════════════════════════════ */
+    footer {
+      background: #0f172a;
+      color: rgba(255,255,255,.70);
+      padding: 60px 24px 32px;
+    }
+    .footer-inner {
+      max-width: 1140px;
+      margin: 0 auto;
+    }
+    .footer-top {
+      display: grid;
+      grid-template-columns: 2fr 1fr 1fr 1fr;
+      gap: 48px;
+      margin-bottom: 48px;
+    }
+    .footer-brand .footer-logo {
+      font-family: var(--font-head);
+      font-weight: 700;
+      font-size: 1.2rem;
+      background: var(--grad);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+      display: inline-block;
+      margin-bottom: 12px;
+    }
+    .footer-brand p { font-size: .85rem; line-height: 1.7; max-width: 260px; }
+    .footer-col h4 {
+      font-family: var(--font-head);
+      font-size: .8rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      color: #fff;
+      margin-bottom: 14px;
+    }
+    .footer-col ul { list-style: none; display: flex; flex-direction: column; gap: 9px; }
+    .footer-col ul li a {
+      font-size: .85rem;
+      color: rgba(255,255,255,.55);
+      transition: color .15s;
+    }
+    .footer-col ul li a:hover { color: #fff; }
+    .footer-bottom {
+      border-top: 1px solid rgba(255,255,255,.08);
+      padding-top: 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .footer-copy { font-size: .8rem; }
+    .footer-legal { display: flex; gap: 20px; }
+    .footer-legal a { font-size: .8rem; color: rgba(255,255,255,.45); }
+    .footer-legal a:hover { color: #fff; }
+    @media (max-width: 880px) {
+      .footer-top { grid-template-columns: 1fr 1fr; }
+    }
+    @media (max-width: 480px) {
+      .footer-top { grid-template-columns: 1fr; gap: 28px; }
+      .footer-bottom { flex-direction: column; text-align: center; }
+    }
+
+    /* ════════════════════════════════
+       SCROLL REVEAL
+    ════════════════════════════════ */
+    .reveal {
+      opacity: 0;
+      transform: translateY(28px);
+      transition: opacity .55s ease, transform .55s ease;
+    }
+    .reveal.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  </style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════
+     NAVBAR
+══════════════════════════════════ -->
+<nav class="navbar">
+  <div class="navbar-inner">
+    <a href="/" class="nav-logo">QuickSellPay</a>
+    <ul class="nav-links">
+      <li><a href="#fonctionnalites">Fonctionnalités</a></li>
+      <li><a href="#tarifs">Tarifs</a></li>
+      <li><a href="#verifier">Vérification</a></li>
+      <li><a href="#telecharger">Télécharger</a></li>
+    </ul>
+    <div class="nav-cta">
+      <button class="btn-ghost" onclick="window.location.href='/app'">Se connecter</button>
+      <button class="btn-primary" onclick="window.location.href='/app'">Commencer gratuitement</button>
+    </div>
+    <button class="hamburger" onclick="toggleMenu()" aria-label="Menu">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
+  <div class="mobile-menu" id="mobileMenu">
+    <a href="#fonctionnalites" onclick="closeMenu()">Fonctionnalités</a>
+    <a href="#tarifs" onclick="closeMenu()">Tarifs</a>
+    <a href="#verifier" onclick="closeMenu()">Vérification produit</a>
+    <a href="#telecharger" onclick="closeMenu()">Télécharger l'APK</a>
+    <div class="divider"></div>
+    <a href="/app" style="color:var(--accent);font-weight:700;">Se connecter →</a>
+    <a href="/superadmin" style="color:var(--muted);">Super-Admin</a>
+  </div>
+</nav>
+
+<!-- ══════════════════════════════════
+     HERO
+══════════════════════════════════ -->
+<section class="hero">
+  <div class="hero-inner">
+    <div class="hero-content">
+      <div class="hero-badge">
+        <span class="hero-badge-dot"></span>
+        Nouveau — Facturation MECeF intégrée
+      </div>
+      <h1>
+        Gérez votre boutique<br/>
+        <span class="accent-text">simplement & vite</span>
+      </h1>
+      <p class="hero-sub">
+        Caisse POS mobile, gestion de stock, vérification QR des produits et facturation certifiée MECeF — tout en une seule application pour les TPE au Bénin.
+      </p>
+      <div class="hero-actions">
+        <a href="/download/apk" class="btn-hero btn-hero-primary">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" width="20" height="20"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
+          Télécharger l'APK
+        </a>
+        <a href="/app" class="btn-hero btn-hero-secondary">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" width="20" height="20"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3"/></svg>
+          Accéder à l'app
+        </a>
+      </div>
+      <div class="hero-trust">
+        <div class="trust-avatars">
+          <span class="a1">AK</span>
+          <span class="a2">SM</span>
+          <span class="a3">BF</span>
+          <span class="a4">OD</span>
+        </div>
+        <span>Déjà utilisé par des boutiques à Cotonou &amp; Porto-Novo</span>
+      </div>
+    </div>
+
+    <div class="hero-visual">
+      <!-- Floating cards -->
+      <div class="float-card left">
+        <div class="fc-label">Ventes aujourd'hui</div>
+        <div class="fc-val">127 500 XOF</div>
+        <span class="fc-tag fc-green">↑ +18% vs hier</span>
+      </div>
+      <div class="float-card right">
+        <div class="fc-label">Produit scanné</div>
+        <div class="fc-val">Authentique ✓</div>
+        <span class="fc-tag fc-green">Vérifié MECeF</span>
+      </div>
+
+      <!-- Phone mockup -->
+      <div class="phone-wrap">
+        <div class="phone-shell">
+          <div class="phone-notch"></div>
+          <div class="phone-screen">
+            <div class="ps-header">
+              <div class="ps-title">QuickSellPay</div>
+              <div class="ps-badge">PRO</div>
+            </div>
+            <div class="ps-row">
+              <div class="ps-card">
+                <div class="ps-card-label">CA du jour</div>
+                <div class="ps-card-val">127 500</div>
+                <div class="ps-card-sub">↑ +18%</div>
+              </div>
+              <div class="ps-card">
+                <div class="ps-card-label">Stock</div>
+                <div class="ps-card-val">842</div>
+                <div class="ps-card-sub">articles</div>
+              </div>
+            </div>
+
+            <div class="ps-item">
+              <div class="ps-item-dot" style="background:rgba(15,118,110,.12)">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="#0f766e"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 013.75 9.375v-4.5z"/></svg>
+              </div>
+              <div class="ps-item-info">
+                <div class="ps-item-name">Savon Lux x3</div>
+                <div class="ps-item-qty">Réf: SLX-003</div>
+              </div>
+              <div class="ps-item-price">1 500 XOF</div>
+            </div>
+
+            <div class="ps-item">
+              <div class="ps-item-dot" style="background:rgba(255,138,31,.12)">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="#ff8a1f"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25h-9A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25z"/></svg>
+              </div>
+              <div class="ps-item-info">
+                <div class="ps-item-name">Huile palme 1L</div>
+                <div class="ps-item-qty">Réf: HPA-001</div>
+              </div>
+              <div class="ps-item-price">800 XOF</div>
+            </div>
+
+            <div class="ps-item">
+              <div class="ps-item-dot" style="background:rgba(21,101,216,.10)">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="#1565d8"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25z"/></svg>
+              </div>
+              <div class="ps-item-info">
+                <div class="ps-item-name">Facture MECeF</div>
+                <div class="ps-item-qty">Certifiée DGI</div>
+              </div>
+              <div class="ps-item-price">Inclus</div>
+            </div>
+
+            <div class="ps-btn">Encaisser — 2 300 XOF</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════
+     STATS BAR
+══════════════════════════════════ -->
+<div class="stats-bar">
+  <div class="stats-inner">
+    <div class="stat-item">
+      <div class="stat-num" data-target="500">0</div>
+      <div class="stat-label">Boutiques actives</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-num" data-target="50000">0</div>
+      <div class="stat-label">Produits vérifiés</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-num" data-target="99">0</div>
+      <div class="stat-label">% uptime garanti</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-num" data-target="3">0</div>
+      <div class="stat-label">Pays couverts</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════
+     FEATURES
+══════════════════════════════════ -->
+<section id="fonctionnalites">
+  <div class="section-inner">
+    <span class="section-eyebrow reveal">Fonctionnalités</span>
+    <h2 class="section-title reveal">Tout ce dont votre boutique<br><span class="accent-text">a besoin</span></h2>
+    <p class="section-sub reveal">Un écosystème complet du scan produit à la facture certifiée, en passant par la gestion multi-employés et le suivi en temps réel.</p>
+
+    <div class="features-grid">
+
+      <div class="feature-card reveal">
+        <div class="feature-icon" style="background:rgba(15,118,110,.10)">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="#0f766e"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 013.75 9.375v-4.5zM3.75 14.625c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5a1.125 1.125 0 01-1.125-1.125v-4.5zM13.5 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0113.5 9.375v-4.5z"/></svg>
+        </div>
+        <h3>Caisse POS mobile</h3>
+        <p>Encaissez avec un smartphone Android. Scan QR code, panier, calcul automatique du rendu monnaie et impression de ticket.</p>
+      </div>
+
+      <div class="feature-card reveal">
+        <div class="feature-icon" style="background:rgba(255,138,31,.12)">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="#ff8a1f"><path stroke-linecap="round" stroke-linejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z"/></svg>
+        </div>
+        <h3>Gestion de stock</h3>
+        <p>Ajoutez vos produits avec photo, référence QR, prix d'achat/vente. Alertes de stock bas automatiques et historique des mouvements.</p>
+      </div>
+
+      <div class="feature-card reveal">
+        <div class="feature-icon" style="background:rgba(21,101,216,.10)">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="#1565d8"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25z"/></svg>
+        </div>
+        <h3>Facturation MECeF</h3>
+        <p>Génère automatiquement des factures certifiées par la Direction Générale des Impôts du Bénin. Conformité fiscale garantie.</p>
+      </div>
+
+      <div class="feature-card reveal">
+        <div class="feature-icon" style="background:rgba(124,58,237,.10)">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="#7c3aed"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z"/></svg>
+        </div>
+        <h3>Vérification QR produit</h3>
+        <p>Chaque produit porte un QR code unique signé cryptographiquement. Vos clients vérifient l'authenticité en scannant depuis n'importe quel smartphone.</p>
+      </div>
+
+      <div class="feature-card reveal">
+        <div class="feature-icon" style="background:rgba(34,193,195,.10)">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="#0891b2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z"/></svg>
+        </div>
+        <h3>Multi-utilisateurs</h3>
+        <p>Gérez une équipe de vendeurs avec des rôles distincts (admin, caissier, gestionnaire). Chaque action est tracée et attribuée.</p>
+      </div>
+
+      <div class="feature-card reveal">
+        <div class="feature-icon" style="background:rgba(220,38,38,.08)">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="#dc2626"><path stroke-linecap="round" stroke-linejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z"/></svg>
+        </div>
+        <h3>Rapports & analytiques</h3>
+        <p>Tableau de bord temps réel avec CA journalier, produits les plus vendus, marges, et exports PDF/CSV pour votre comptable.</p>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════
+     HOW IT WORKS
+══════════════════════════════════ -->
+<section id="comment">
+  <div class="section-inner">
+    <span class="section-eyebrow reveal">Comment ça marche</span>
+    <h2 class="section-title reveal">Démarrez en <span class="accent-text">3 étapes</span></h2>
+    <p class="section-sub reveal">Aucune compétence technique requise. Votre boutique est opérationnelle en moins de 10 minutes.</p>
+    <div class="steps-grid">
+      <div class="step-item reveal">
+        <div class="step-num">1</div>
+        <h3>Téléchargez l'APK</h3>
+        <p>Installez l'application Android QuickSellPay sur votre smartphone. Compatible Android 6.0 et supérieur.</p>
+      </div>
+      <div class="step-item reveal">
+        <div class="step-num">2</div>
+        <h3>Créez votre boutique</h3>
+        <p>Inscrivez-vous en 4 étapes : infos boutique, compte admin, légal (IFU, RCCM) et configuration MECeF si vous êtes assujetti à la TVA.</p>
+      </div>
+      <div class="step-item reveal">
+        <div class="step-num">3</div>
+        <h3>Gérez &amp; encaissez</h3>
+        <p>Ajoutez vos produits, générez les QR codes, formez vos vendeurs et commencez à encaisser avec facturation automatique.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════
+     PRICING
+══════════════════════════════════ -->
+<section id="tarifs">
+  <div class="section-inner">
+    <span class="section-eyebrow reveal">Tarifs</span>
+    <h2 class="section-title reveal">Des plans <span class="accent-text">adaptés à votre taille</span></h2>
+    <p class="section-sub reveal">Commencez gratuitement. Passez à un plan supérieur uniquement quand vous grandissez. Pas d'engagement, annulable à tout moment.</p>
+
+    <div class="plans-grid">
+
+      <!-- FREE -->
+      <div class="plan-card reveal">
+        <div class="plan-name">Gratuit</div>
+        <div class="plan-price">
+          <span class="currency"></span>0 <span class="period">XOF / mois</span>
+        </div>
+        <div class="plan-desc">Pour démarrer et tester le produit.</div>
+        <div class="plan-divider"></div>
+        <ul class="plan-features">
+          <li>10 produits maximum</li>
+          <li>1 utilisateur</li>
+          <li>100 transactions/mois</li>
+          <li>Vérification QR</li>
+          <li>Accès web & mobile</li>
+        </ul>
+        <button class="plan-btn muted" onclick="window.location.href='/app'">Commencer gratuitement</button>
+      </div>
+
+      <!-- BASIC -->
+      <div class="plan-card reveal">
+        <div class="plan-name">Basic</div>
+        <div class="plan-price">
+          <span class="currency"></span>5 000 <span class="period">XOF / mois</span>
+        </div>
+        <div class="plan-desc">Pour les petites boutiques bien établies.</div>
+        <div class="plan-divider"></div>
+        <ul class="plan-features">
+          <li>100 produits</li>
+          <li>3 utilisateurs</li>
+          <li>1 000 transactions/mois</li>
+          <li>Facturation MECeF</li>
+          <li>Export PDF & CSV</li>
+        </ul>
+        <button class="plan-btn outline" onclick="window.location.href='/billing'">Choisir Basic</button>
+      </div>
+
+      <!-- PRO -->
+      <div class="plan-card featured reveal">
+        <div class="plan-featured-badge">⭐ Populaire</div>
+        <div class="plan-name">Pro</div>
+        <div class="plan-price">
+          <span class="currency"></span>15 000 <span class="period">XOF / mois</span>
+        </div>
+        <div class="plan-desc">Pour les boutiques en croissance rapide.</div>
+        <div class="plan-divider"></div>
+        <ul class="plan-features">
+          <li>1 000 produits</li>
+          <li>10 utilisateurs</li>
+          <li>10 000 transactions/mois</li>
+          <li>Facturation MECeF</li>
+          <li>Rapports avancés</li>
+          <li>Support prioritaire</li>
+        </ul>
+        <button class="plan-btn primary" onclick="window.location.href='/billing'">Choisir Pro</button>
+      </div>
+
+      <!-- ENTERPRISE -->
+      <div class="plan-card reveal">
+        <div class="plan-name">Entreprise</div>
+        <div class="plan-price">
+          <span class="currency"></span>30 000 <span class="period">XOF / mois</span>
+        </div>
+        <div class="plan-desc">Pour les grandes structures et franchises.</div>
+        <div class="plan-divider"></div>
+        <ul class="plan-features">
+          <li>Produits illimités</li>
+          <li>Utilisateurs illimités</li>
+          <li>Transactions illimitées</li>
+          <li>Multi-boutiques</li>
+          <li>API dédiée</li>
+          <li>Accompagnement personnalisé</li>
+        </ul>
+        <button class="plan-btn outline" onclick="window.location.href='/billing'">Choisir Entreprise</button>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════
+     VERIFY
+══════════════════════════════════ -->
+<section id="verifier">
+  <div class="section-inner">
+    <div class="verify-layout">
+      <div>
+        <span class="section-eyebrow reveal">Vérification</span>
+        <h2 class="section-title reveal">Vérifiez l'authenticité<br><span class="accent-text">d'un produit</span></h2>
+        <p class="section-sub reveal">Scannez ou entrez le code QR d'un produit pour vérifier instantanément sa provenance, le nom de la boutique et la date d'enregistrement.</p>
+
+        <div class="verify-form-card reveal">
+          <h3>Vérifier un produit</h3>
+          <p>Entrez la clé QR ou scannez le code-barres du produit.</p>
+          <div class="input-group">
+            <input type="text" class="input-field" id="verifyInput" placeholder="Ex: QSP-xxxx-xxxx-xxxx" />
+            <button class="btn-verify" onclick="doVerify()">Vérifier</button>
+          </div>
+          <p class="verify-note">
+            Vous avez un QR code à scanner ?
+            <a class="verify-alt-link" onclick="window.location.href='/verify'">→ Ouvrir le scanner complet</a>
+          </p>
+        </div>
+      </div>
+
+      <div class="verify-visual">
+        <div class="verify-step reveal">
+          <div class="vs-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 013.75 9.375v-4.5z"/></svg>
+          </div>
+          <div class="vs-text">
+            <h4>Scan du QR code</h4>
+            <p>Chaque produit enregistré dans QuickSellPay reçoit un QR code unique signé cryptographiquement par la boutique.</p>
+          </div>
+        </div>
+        <div class="verify-step reveal">
+          <div class="vs-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z"/></svg>
+          </div>
+          <div class="vs-text">
+            <h4>Vérification côté serveur</h4>
+            <p>Notre API vérifie la signature HMAC du QR code, l'identité de la boutique, et l'intégrité des données du produit.</p>
+          </div>
+        </div>
+        <div class="verify-step reveal">
+          <div class="vs-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 10.5V6.75a4.5 4.5 0 119 0v3.75M3.75 21.75h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H3.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z"/></svg>
+          </div>
+          <div class="vs-text">
+            <h4>Résultat instantané</h4>
+            <p>Produit authentique ou suspect — vous et votre client savez en moins d'une seconde si le produit est légitime.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════
+     DOWNLOAD
+══════════════════════════════════ -->
+<section id="telecharger">
+  <div class="section-inner">
+    <div class="download-layout">
+      <div class="download-card">
+        <h3>Télécharger QuickSellPay</h3>
+        <p>Application Android native. Fonctionne hors ligne, synchronisation automatique dès que la connexion revient.</p>
+        <a href="/download/apk" class="download-btn-main">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
+          Télécharger l'APK
+        </a>
+        <div class="download-meta">Version actuelle · Android 6.0+ · ~25 Mo</div>
+        <div class="download-archs">
+          <a class="arch-btn" href="/download/apk?arch=arm64">ARM64 (recommandé)</a>
+          <a class="arch-btn" href="/download/apk?arch=armv7">ARMv7</a>
+          <a class="arch-btn" href="/download/apk?arch=x86_64">x86_64</a>
+        </div>
+      </div>
+
+      <div class="download-steps">
+        <span class="section-eyebrow reveal">Installation</span>
+        <h2 class="section-title reveal" style="margin-bottom:24px">Comment installer<br><span class="accent-text">l'APK ?</span></h2>
+        <div class="dl-step reveal">
+          <div class="dl-step-num">1</div>
+          <div class="dl-step-text">
+            <h4>Autorisez les sources inconnues</h4>
+            <p>Allez dans Paramètres → Sécurité → Activer "Sources inconnues" ou "Installer des apps inconnues" selon votre Android.</p>
+          </div>
+        </div>
+        <div class="dl-step reveal">
+          <div class="dl-step-num">2</div>
+          <div class="dl-step-text">
+            <h4>Téléchargez et ouvrez le fichier</h4>
+            <p>Appuyez sur le bouton ci-contre, puis ouvrez le fichier .apk depuis vos téléchargements et suivez les instructions.</p>
+          </div>
+        </div>
+        <div class="dl-step reveal">
+          <div class="dl-step-num">3</div>
+          <div class="dl-step-text">
+            <h4>Lancez et créez votre boutique</h4>
+            <p>Ouvrez QuickSellPay, inscrivez-vous en 4 étapes et commencez à gérer votre boutique immédiatement.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════
+     AUTH CTA
+══════════════════════════════════ -->
+<section id="connexion">
+  <div class="section-inner" style="text-align:center;">
+    <span class="section-eyebrow reveal" style="justify-content:center;gap:7px;">Accès</span>
+    <h2 class="section-title reveal">Choisissez votre <span class="accent-text">espace</span></h2>
+    <p class="section-sub reveal" style="margin:0 auto 40px;">Boutiques : accès au tableau de bord et à la caisse. Administrateurs : supervision globale de toutes les boutiques.</p>
+    <div class="auth-grid reveal">
+
+      <div class="auth-card">
+        <div class="auth-icon" style="background:rgba(15,118,110,.10)">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="#0f766e"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 21v-7.5a.75.75 0 01.75-.75h3a.75.75 0 01.75.75V21m-4.5 0H2.36m11.14 0H18m0 0h3.64m-1.39 0V9.349m-16.5 11.65V9.35m0 0a3.001 3.001 0 003.75-.615A2.993 2.993 0 009.75 9.75c.896 0 1.7-.393 2.25-1.016a2.993 2.993 0 002.25 1.016c.896 0 1.7-.393 2.25-1.015a3.001 3.001 0 003.75.614m-16.5 0a3.004 3.004 0 01-.621-4.72L4.318 3.44A1.5 1.5 0 015.378 3h13.243a1.5 1.5 0 011.06.44l1.19 1.189a3 3 0 01-.621 4.72m-13.5 8.65h3.75a.75.75 0 00.75-.75V13.5a.75.75 0 00-.75-.75H6.75a.75.75 0 00-.75.75v3.75c0 .415.336.75.75.75z"/></svg>
+        </div>
+        <h3>Espace Boutique</h3>
+        <p>Connectez-vous à votre tableau de bord, gérez votre stock et encaissez vos clients.</p>
+        <a href="/app" class="auth-btn teal">Se connecter — Boutique</a>
+        <div class="auth-register-link">Pas encore de compte ? <a href="/app">S'inscrire gratuitement</a></div>
+      </div>
+
+      <div class="auth-card admin">
+        <div class="auth-icon" style="background:rgba(255,255,255,.10)">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="rgba(255,255,255,.85)"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z"/></svg>
+        </div>
+        <h3>Super-Admin</h3>
+        <p style="color:rgba(255,255,255,.60)">Supervision globale : toutes les boutiques, abonnements, utilisateurs et statistiques de la plateforme.</p>
+        <a href="/superadmin" class="auth-btn white">Accès Super-Admin</a>
+        <div class="auth-register-link" style="color:rgba(255,255,255,.35)">Accès réservé aux administrateurs</div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════
+     FAQ
+══════════════════════════════════ -->
+<section id="faq">
+  <div class="section-inner">
+    <span class="section-eyebrow reveal">FAQ</span>
+    <h2 class="section-title reveal">Questions <span class="accent-text">fréquentes</span></h2>
+    <div class="faq-list">
+
+      <div class="faq-item">
+        <div class="faq-q" onclick="toggleFaq(this)">
+          <span>QuickSellPay fonctionne-t-il sans connexion Internet ?</span>
+          <div class="faq-arrow"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5"/></svg></div>
+        </div>
+        <div class="faq-a"><div class="faq-a-inner">Oui. L'application Android fonctionne en mode hors-ligne pour les ventes et la gestion de stock. Les données se synchronisent automatiquement dès que la connexion Internet est rétablie. Une connexion est nécessaire pour la vérification QR en temps réel et la génération des factures MECeF.</div></div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-q" onclick="toggleFaq(this)">
+          <span>Est-ce conforme à la réglementation fiscale béninoise (DGI/MECeF) ?</span>
+          <div class="faq-arrow"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5"/></svg></div>
+        </div>
+        <div class="faq-a"><div class="faq-a-inner">Oui. QuickSellPay intègre le système MECeF (Mécanisme d'Émission et de Contrôle des Factures Électroniques) de la DGI Bénin. Si vous êtes assujetti à la TVA, vos factures sont automatiquement certifiées avec NIM, NIF et compteur officiel lors de l'inscription avec votre token MECeF.</div></div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-q" onclick="toggleFaq(this)">
+          <span>Comment fonctionne la vérification QR pour mes clients ?</span>
+          <div class="faq-arrow"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5"/></svg></div>
+        </div>
+        <div class="faq-a"><div class="faq-a-inner">Chaque produit enregistré dans QuickSellPay reçoit un QR code unique contenant une signature cryptographique (HMAC-SHA256). Vos clients peuvent scanner ce code avec n'importe quel smartphone ou entrer le code sur <strong>quicksellpay.tunelaf.com/verify</strong> pour vérifier instantanément l'authenticité du produit et le nom de votre boutique.</div></div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-q" onclick="toggleFaq(this)">
+          <span>Puis-je passer d'un plan à un autre ?</span>
+          <div class="faq-arrow"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5"/></svg></div>
+        </div>
+        <div class="faq-a"><div class="faq-a-inner">Oui, à tout moment. Passez à un plan supérieur pour débloquer plus de produits et d'utilisateurs. Le changement est effectif immédiatement après le paiement via MoMo, Moov Money ou carte bancaire. Pas de frais de résiliation ni d'engagement à long terme.</div></div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-q" onclick="toggleFaq(this)">
+          <span>Quels modes de paiement pour l'abonnement ?</span>
+          <div class="faq-arrow"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5"/></svg></div>
+        </div>
+        <div class="faq-a"><div class="faq-a-inner">Les abonnements se règlent via MTN MoMo, Moov Money ou carte bancaire (Visa/Mastercard), grâce à notre intégration FedaPay. Vous recevez une confirmation par email immédiatement après le paiement.</div></div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════
+     FOOTER
+══════════════════════════════════ -->
+<footer>
+  <div class="footer-inner">
+    <div class="footer-top">
+      <div class="footer-brand">
+        <div class="footer-logo">QuickSellPay</div>
+        <p>Système de gestion tout-en-un pour les TPE au Bénin. Caisse POS, stock, facturation MECeF et vérification produit.</p>
+      </div>
+      <div class="footer-col">
+        <h4>Produit</h4>
+        <ul>
+          <li><a href="#fonctionnalites">Fonctionnalités</a></li>
+          <li><a href="#tarifs">Tarifs</a></li>
+          <li><a href="#telecharger">Télécharger l'APK</a></li>
+          <li><a href="/billing">Abonnements</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4>Accès</h4>
+        <ul>
+          <li><a href="/app">Espace boutique</a></li>
+          <li><a href="/superadmin">Super-Admin</a></li>
+          <li><a href="/verify">Vérifier un produit</a></li>
+          <li><a href="/docs">API Docs</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4>Légal</h4>
+        <ul>
+          <li><a href="/privacy">Confidentialité</a></li>
+          <li><a href="/terms">CGU</a></li>
+          <li><a href="/legal">Mentions légales</a></li>
+          <li><a href="/about">À propos</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span class="footer-copy">© 2025 QuickSellPay. Fait au Bénin 🇧🇯</span>
+      <div class="footer-legal">
+        <a href="/privacy">Confidentialité</a>
+        <a href="/terms">CGU</a>
+        <a href="/legal">Légal</a>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<script>
+  /* ─── Mobile menu ─── */
+  function toggleMenu() {
+    document.getElementById('mobileMenu').classList.toggle('open');
+  }
+  function closeMenu() {
+    document.getElementById('mobileMenu').classList.remove('open');
+  }
+
+  /* ─── FAQ accordion ─── */
+  function toggleFaq(el) {
+    const item = el.parentElement;
+    const wasOpen = item.classList.contains('open');
+    document.querySelectorAll('.faq-item.open').forEach(i => i.classList.remove('open'));
+    if (!wasOpen) item.classList.add('open');
+  }
+
+  /* ─── Scroll reveal ─── */
+  const revealObserver = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        e.target.classList.add('visible');
+        revealObserver.unobserve(e.target);
+      }
+    });
+  }, { threshold: 0.1 });
+  document.querySelectorAll('.reveal').forEach(el => revealObserver.observe(el));
+
+  /* ─── Stats counter ─── */
+  function animateCounter(el, target, suffix) {
+    const dur = 1800;
+    const start = performance.now();
+    const update = (now) => {
+      const t = Math.min((now - start) / dur, 1);
+      const ease = 1 - Math.pow(1 - t, 3);
+      const val = Math.round(ease * target);
+      el.textContent = val.toLocaleString('fr-FR') + (suffix || '');
+      if (t < 1) requestAnimationFrame(update);
+    };
+    requestAnimationFrame(update);
+  }
+
+  const statsObserver = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        const nums = e.target.querySelectorAll('[data-target]');
+        nums.forEach(n => {
+          const target = parseInt(n.dataset.target);
+          const suffix = n.dataset.suffix || (n.dataset.target === '99' ? '%' : '+');
+          animateCounter(n, target, suffix);
+        });
+        statsObserver.unobserve(e.target);
+      }
+    });
+  }, { threshold: 0.5 });
+  const statsBar = document.querySelector('.stats-bar');
+  if (statsBar) statsObserver.observe(statsBar);
+
+  /* ─── Verify redirect ─── */
+  function doVerify() {
+    const code = document.getElementById('verifyInput').value.trim();
+    if (!code) { document.getElementById('verifyInput').focus(); return; }
+    window.location.href = '/verify?code=' + encodeURIComponent(code);
+  }
+  document.getElementById('verifyInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter') doVerify();
+  });
+</script>
+</body>
+</html>

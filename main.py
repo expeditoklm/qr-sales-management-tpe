@@ -270,8 +270,32 @@ def favicon():
 
 
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
+def page_landing():
+    return HTMLResponse((FRONTEND_DIR / "landing.html").read_text(encoding="utf-8"))
+
+
+@app.get("/app",      response_class=HTMLResponse, include_in_schema=False)
+@app.get("/app.html", response_class=HTMLResponse, include_in_schema=False)
 def page_dashboard():
     return HTMLResponse((FRONTEND_DIR / "index.html").read_text(encoding="utf-8"))
+
+
+@app.get("/download/apk", include_in_schema=False)
+def download_apk(arch: str = "arm64"):
+    arch_map = {
+        "arm64":  "QuickSellPay.apk",
+        "armv7":  "QuickSellPay.apk",
+        "x86_64": "QuickSellPay.apk",
+    }
+    filename = arch_map.get(arch, "QuickSellPay.apk")
+    apk_path = STATIC_DIR / "downloads" / filename
+    if not apk_path.exists():
+        raise HTTPException(404, "APK non disponible — revenez bientot")
+    return FileResponse(
+        apk_path,
+        media_type="application/vnd.android.package-archive",
+        filename="QuickSellPay.apk",
+    )
 
 @app.get("/superadmin", response_class=HTMLResponse, include_in_schema=False)
 def page_superadmin():
