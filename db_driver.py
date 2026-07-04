@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS users (
     role VARCHAR(64) NOT NULL DEFAULT 'employee',
     is_active INTEGER NOT NULL DEFAULT 1,
     email_verified INTEGER NOT NULL DEFAULT 0,
+    revoked_before VARCHAR(64),
     created_at VARCHAR(64) NOT NULL,
     FOREIGN KEY (company_id) REFERENCES companies(id)
 );
@@ -72,6 +73,14 @@ CREATE TABLE IF NOT EXISTS password_reset_tokens (
     email VARCHAR(255) NOT NULL,
     expires_at VARCHAR(64) NOT NULL,
     used INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS token_blacklist (
+    jti        VARCHAR(191) PRIMARY KEY,
+    user_id    VARCHAR(191) NOT NULL,
+    expires_at VARCHAR(64) NOT NULL,
+    created_at VARCHAR(64) NOT NULL,
+    INDEX idx_bl_expires (expires_at),
+    INDEX idx_bl_user    (user_id)
 );
 """
 

@@ -1,9 +1,15 @@
 """
-database.py — v4.0
-Architecture multi-tenant : une base SQLite par boutique dans DATA_DIR/erp_{company_id}.db
-La base partagée (shared.db) stocke : companies, users, subscriptions
+database.py — v5.0
+Architecture multi-tenant : base MySQL unique avec company_id partout.
+Fallback SQLite pour développement local (DB_ENGINE=sqlite).
+
+Nouveautés v5 :
+  • token_blacklist — révocation JWT côté serveur
+  • revoked_before   — révocation en masse par utilisateur (deactivate_user)
+  • cleanup_blacklist() — nettoyage automatique des entrées expirées
 """
 import sqlite3, json
+from datetime import datetime, timezone
 from pathlib import Path
 from config import get_settings
 from db_driver import mysql_conn, mysql_enabled
@@ -11,10 +17,11 @@ from db_driver import mysql_conn, mysql_enabled
 cfg = get_settings()
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# BASE PARTAGÉE  (companies, users, subscriptions)
+# CONNEXIONS
 # ═══════════════════════════════════════════════════════════════════════════════
 
 SHARED_DB = cfg.DATA_DIR / "shared.db"
+
 
 def _shared_conn():
     if mysql_enabled():
@@ -27,34 +34,58 @@ def _shared_conn():
     return conn
 
 
+def get_conn(company_id: str):
+    """Connexion scopée à la boutique (tenant)."""
+    if mysql_enabled():
+        return mysql_conn(company_id or None)
+    cfg.DATA_DIR.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(_tenant_path(company_id)))
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA foreign_keys=ON")
+    _ensure_tenant_schema(conn)
+    return conn
+
+
+def _tenant_path(company_id: str) -> Path:
+    safe = "".join(c if c.isalnum() or c in "-_" else "_" for c in company_id)
+    return cfg.DATA_DIR / f"erp_{safe}.db"
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# INITIALISATION DES SCHÉMAS
+# ═══════════════════════════════════════════════════════════════════════════════
+
 def init_shared_db():
+    """Crée / met à jour la base partagée (companies, users, subscriptions…)."""
     with _shared_conn() as conn:
         conn.executescript("""
             CREATE TABLE IF NOT EXISTS companies (
-                id          TEXT PRIMARY KEY,
-                name        TEXT NOT NULL,
-                email       TEXT NOT NULL UNIQUE,
-                secret_key  TEXT NOT NULL DEFAULT '',
-                logo_url    TEXT,
+                id              TEXT PRIMARY KEY,
+                name            TEXT NOT NULL,
+                email           TEXT NOT NULL UNIQUE,
+                secret_key      TEXT NOT NULL DEFAULT '',
+                logo_url        TEXT,
                 commercial_name TEXT,
-                rccm        TEXT,
-                ifu         TEXT,
-                address     TEXT,
-                phone       TEXT,
-                contact_email TEXT,
-                plan        TEXT NOT NULL DEFAULT 'free',
-                status      TEXT NOT NULL DEFAULT 'active',
-                created_at  TEXT NOT NULL
+                rccm            TEXT,
+                ifu             TEXT,
+                address         TEXT,
+                phone           TEXT,
+                contact_email   TEXT,
+                plan            TEXT NOT NULL DEFAULT 'free',
+                status          TEXT NOT NULL DEFAULT 'active',
+                created_at      TEXT NOT NULL
             );
             CREATE TABLE IF NOT EXISTS users (
-                id            TEXT PRIMARY KEY,
-                company_id    TEXT NOT NULL,
-                email         TEXT NOT NULL UNIQUE,
-                password_hash TEXT NOT NULL,
-                role          TEXT NOT NULL DEFAULT 'employee',
-                is_active     INTEGER NOT NULL DEFAULT 1,
-                email_verified INTEGER NOT NULL DEFAULT 0,
-                created_at    TEXT NOT NULL,
+                id              TEXT PRIMARY KEY,
+                company_id      TEXT NOT NULL,
+                email           TEXT NOT NULL UNIQUE,
+                password_hash   TEXT NOT NULL,
+                role            TEXT NOT NULL DEFAULT 'employee',
+                is_active       INTEGER NOT NULL DEFAULT 1,
+                email_verified  INTEGER NOT NULL DEFAULT 0,
+                revoked_before  TEXT,
+                created_at      TEXT NOT NULL,
                 FOREIGN KEY (company_id) REFERENCES companies(id)
             );
             CREATE INDEX IF NOT EXISTS idx_users_company ON users(company_id);
@@ -85,10 +116,10 @@ def init_shared_db():
 
             CREATE TABLE IF NOT EXISTS email_verification_tokens (
                 token       TEXT PRIMARY KEY,
-                user_id      TEXT NOT NULL,
-                email        TEXT NOT NULL,
-                expires_at   TEXT NOT NULL,
-                used         INTEGER NOT NULL DEFAULT 0
+                user_id     TEXT NOT NULL,
+                email       TEXT NOT NULL,
+                expires_at  TEXT NOT NULL,
+                used        INTEGER NOT NULL DEFAULT 0
             );
 
             CREATE TABLE IF NOT EXISTS password_reset_tokens (
@@ -98,52 +129,222 @@ def init_shared_db():
                 expires_at  TEXT NOT NULL,
                 used        INTEGER NOT NULL DEFAULT 0
             );
+
+            CREATE TABLE IF NOT EXISTS token_blacklist (
+                jti         TEXT PRIMARY KEY,
+                user_id     TEXT NOT NULL,
+                expires_at  TEXT NOT NULL,
+                created_at  TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_bl_expires ON token_blacklist(expires_at);
+            CREATE INDEX IF NOT EXISTS idx_bl_user    ON token_blacklist(user_id);
         """)
-        company_columns = {
-            row["name"]
-            for row in conn.execute("PRAGMA table_info(companies)").fetchall()
-        }
-        if "secret_key" not in company_columns:
-            conn.execute(
-                "ALTER TABLE companies ADD COLUMN secret_key TEXT NOT NULL DEFAULT ''"
-            )
-        if "logo_url" not in company_columns:
-            conn.execute(
-                "ALTER TABLE companies ADD COLUMN logo_url TEXT"
-            )
-        if "commercial_name" not in company_columns:
-            conn.execute("ALTER TABLE companies ADD COLUMN commercial_name TEXT")
-        if "rccm" not in company_columns:
-            conn.execute("ALTER TABLE companies ADD COLUMN rccm TEXT")
-        if "ifu" not in company_columns:
-            conn.execute("ALTER TABLE companies ADD COLUMN ifu TEXT")
-        if "address" not in company_columns:
-            conn.execute("ALTER TABLE companies ADD COLUMN address TEXT")
-        if "phone" not in company_columns:
-            conn.execute("ALTER TABLE companies ADD COLUMN phone TEXT")
-        if "contact_email" not in company_columns:
-            conn.execute("ALTER TABLE companies ADD COLUMN contact_email TEXT")
-        user_columns = {
-            row["name"]
-            for row in conn.execute("PRAGMA table_info(users)").fetchall()
-        }
-        if "email_verified" not in user_columns:
-            conn.execute(
-                "ALTER TABLE users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0"
-            )
+
+        # ── Migrations de colonnes (idempotentes) ──────────────────────────
+        if not mysql_enabled():
+            _sqlite_add_column_if_missing(conn, "companies", "secret_key",      "TEXT NOT NULL DEFAULT ''")
+            _sqlite_add_column_if_missing(conn, "companies", "logo_url",         "TEXT")
+            _sqlite_add_column_if_missing(conn, "companies", "commercial_name",  "TEXT")
+            _sqlite_add_column_if_missing(conn, "companies", "rccm",             "TEXT")
+            _sqlite_add_column_if_missing(conn, "companies", "ifu",              "TEXT")
+            _sqlite_add_column_if_missing(conn, "companies", "address",          "TEXT")
+            _sqlite_add_column_if_missing(conn, "companies", "phone",            "TEXT")
+            _sqlite_add_column_if_missing(conn, "companies", "contact_email",    "TEXT")
+            _sqlite_add_column_if_missing(conn, "users", "email_verified",  "INTEGER NOT NULL DEFAULT 0")
+            _sqlite_add_column_if_missing(conn, "users", "revoked_before",  "TEXT")
 
 
-# ─── Companies ────────────────────────────────────────────────────────────────
+def _sqlite_add_column_if_missing(conn, table: str, column: str, definition: str):
+    cols = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+    if column not in cols:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+
+
+def _ensure_tenant_schema(conn):
+    """Tables produits/ventes pour SQLite (idem MYSQL_TENANT_SCHEMA dans db_driver)."""
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS products (
+            id                    TEXT PRIMARY KEY,
+            sku                   TEXT,
+            name                  TEXT NOT NULL,
+            description           TEXT,
+            price                 REAL NOT NULL,
+            stock                 INTEGER NOT NULL DEFAULT 0,
+            image_url             TEXT,
+            reference_image_url   TEXT,
+            reference_image_hash  TEXT,
+            consumer_code         TEXT,
+            created_at            TEXT NOT NULL,
+            updated_at            TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_prod_consumer ON products(consumer_code);
+        CREATE INDEX IF NOT EXISTS idx_prod_sku      ON products(sku);
+
+        CREATE TABLE IF NOT EXISTS sales (
+            id                 TEXT PRIMARY KEY,
+            reference          TEXT NOT NULL,
+            source             TEXT DEFAULT 'dashboard',
+            items              TEXT NOT NULL,
+            total              REAL NOT NULL DEFAULT 0,
+            customer           TEXT,
+            note               TEXT,
+            created_by_user_id TEXT,
+            created_by_email   TEXT,
+            created_by_role    TEXT,
+            created_at         TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_sales_user ON sales(created_by_user_id);
+
+        CREATE TABLE IF NOT EXISTS audit_logs (
+            id           TEXT PRIMARY KEY,
+            user_id      TEXT,
+            user_email   TEXT,
+            user_role    TEXT,
+            action       TEXT NOT NULL,
+            object_type  TEXT NOT NULL,
+            object_id    TEXT,
+            object_label TEXT,
+            details      TEXT NOT NULL DEFAULT '{}',
+            created_at   TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_logs(created_at);
+        CREATE INDEX IF NOT EXISTS idx_audit_user    ON audit_logs(user_id);
+        CREATE INDEX IF NOT EXISTS idx_audit_object  ON audit_logs(object_type, object_id);
+
+        CREATE TABLE IF NOT EXISTS auth_codes (
+            id         TEXT PRIMARY KEY,
+            product_id TEXT NOT NULL,
+            code       TEXT NOT NULL UNIQUE,
+            status     TEXT NOT NULL DEFAULT 'active',
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_codes_product ON auth_codes(product_id);
+        CREATE INDEX IF NOT EXISTS idx_codes_code    ON auth_codes(code);
+
+        CREATE TABLE IF NOT EXISTS verifications (
+            id           TEXT PRIMARY KEY,
+            code_id      TEXT,
+            product_id   TEXT NOT NULL,
+            verified_at  TEXT NOT NULL,
+            latitude     REAL,
+            longitude    REAL,
+            city         TEXT,
+            country      TEXT,
+            ip_address   TEXT,
+            user_agent   TEXT,
+            code_value   TEXT,
+            attempt_type TEXT NOT NULL DEFAULT 'valid',
+            is_valid     INTEGER NOT NULL DEFAULT 1,
+            is_fraud     INTEGER NOT NULL DEFAULT 0,
+            note         TEXT,
+            FOREIGN KEY (code_id) REFERENCES auth_codes(id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_verif_product ON verifications(product_id);
+        CREATE INDEX IF NOT EXISTS idx_verif_code    ON verifications(code_id);
+    """)
+
+
+def init_tenant_db(company_id: str):
+    """Appelé à la création d'une boutique pour pré-créer les tables (MySQL)."""
+    if mysql_enabled():
+        with get_conn(company_id) as conn:
+            conn.executescript("CREATE TABLE IF NOT EXISTS products")
+    else:
+        with get_conn(company_id):
+            pass  # _ensure_tenant_schema est appelé dans get_conn SQLite
+
+
+def tenant_ids() -> list[str]:
+    if mysql_enabled():
+        with _shared_conn() as conn:
+            rows = conn.execute("SELECT id FROM companies WHERE status='active'").fetchall()
+        return [row["id"] for row in rows]
+    return [f.stem[4:] for f in cfg.DATA_DIR.glob("erp_*.db")]
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# TOKEN BLACKLIST — révocation JWT
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _now_iso() -> str:
+    return datetime.now(tz=timezone.utc).isoformat()
+
+
+def blacklist_token(jti: str, user_id: str, expires_at: str):
+    """Blackliste un token JWT par son JTI."""
+    with _shared_conn() as conn:
+        if mysql_enabled():
+            conn.execute("""
+                INSERT INTO token_blacklist (jti, user_id, expires_at, created_at)
+                VALUES (%s, %s, %s, %s)
+                ON DUPLICATE KEY UPDATE user_id=user_id
+            """, (jti, user_id, expires_at, _now_iso()))
+        else:
+            conn.execute("""
+                INSERT OR IGNORE INTO token_blacklist (jti, user_id, expires_at, created_at)
+                VALUES (?, ?, ?, ?)
+            """, (jti, user_id, expires_at, _now_iso()))
+
+
+def is_token_blacklisted(jti: str) -> bool:
+    """Vérifie si un JTI est dans la blacklist."""
+    with _shared_conn() as conn:
+        row = conn.execute(
+            "SELECT jti FROM token_blacklist WHERE jti=?", (jti,)
+        ).fetchone()
+    return row is not None
+
+
+def revoke_user_tokens(user_id: str):
+    """
+    Révoque tous les tokens actifs d'un utilisateur en enregistrant
+    le timestamp courant dans revoked_before.
+    Tout token émis AVANT ce timestamp sera rejeté.
+    """
+    now = _now_iso()
+    with _shared_conn() as conn:
+        conn.execute(
+            "UPDATE users SET revoked_before=? WHERE id=?",
+            (now, user_id),
+        )
+
+
+def get_user_revoked_before(user_id: str) -> str | None:
+    """Retourne le timestamp de révocation globale d'un user (ou None)."""
+    with _shared_conn() as conn:
+        row = conn.execute(
+            "SELECT revoked_before FROM users WHERE id=?", (user_id,)
+        ).fetchone()
+    if row is None:
+        return None
+    return row["revoked_before"] if isinstance(row, dict) else row[0]
+
+
+def cleanup_blacklist():
+    """Supprime les entrées expirées de la blacklist. À appeler périodiquement."""
+    now = _now_iso()
+    with _shared_conn() as conn:
+        conn.execute(
+            "DELETE FROM token_blacklist WHERE expires_at < ?", (now,)
+        )
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# COMPANIES
+# ═══════════════════════════════════════════════════════════════════════════════
 
 def get_company(company_id: str) -> dict | None:
     with _shared_conn() as conn:
         row = conn.execute("SELECT * FROM companies WHERE id=?", (company_id,)).fetchone()
     return dict(row) if row else None
 
+
 def get_company_by_email(email: str) -> dict | None:
     with _shared_conn() as conn:
         row = conn.execute("SELECT * FROM companies WHERE email=?", (email.lower(),)).fetchone()
     return dict(row) if row else None
+
 
 def get_company_by_id_or_email(identifier: str) -> dict | None:
     with _shared_conn() as conn:
@@ -153,6 +354,7 @@ def get_company_by_id_or_email(identifier: str) -> dict | None:
         ).fetchone()
     return dict(row) if row else None
 
+
 def get_company_by_secret_key(secret_key: str) -> dict | None:
     with _shared_conn() as conn:
         row = conn.execute(
@@ -160,6 +362,7 @@ def get_company_by_secret_key(secret_key: str) -> dict | None:
             (secret_key,),
         ).fetchone()
     return dict(row) if row else None
+
 
 def insert_company(c: dict):
     with _shared_conn() as conn:
@@ -171,6 +374,7 @@ def insert_company(c: dict):
             ")",
             c,
         )
+
 
 def all_companies() -> list:
     with _shared_conn() as conn:
@@ -186,24 +390,20 @@ def all_companies() -> list:
         ).fetchall()
     return [dict(r) for r in rows]
 
+
 def update_company_status(company_id: str, status: str):
     with _shared_conn() as conn:
         conn.execute("UPDATE companies SET status=? WHERE id=?", (status, company_id))
 
+
 def update_company_secret_key(company_id: str, secret_key: str):
     with _shared_conn() as conn:
-        conn.execute(
-            "UPDATE companies SET secret_key=? WHERE id=?",
-            (secret_key, company_id),
-        )
+        conn.execute("UPDATE companies SET secret_key=? WHERE id=?", (secret_key, company_id))
 
 
 def update_company_logo(company_id: str, logo_url: str | None):
     with _shared_conn() as conn:
-        conn.execute(
-            "UPDATE companies SET logo_url=? WHERE id=?",
-            (logo_url, company_id),
-        )
+        conn.execute("UPDATE companies SET logo_url=? WHERE id=?", (logo_url, company_id))
 
 
 def update_company_profile(company_id: str, payload: dict):
@@ -226,27 +426,33 @@ def update_company_profile(company_id: str, payload: dict):
         )
 
 
-# ─── Users ────────────────────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════════════════
+# USERS
+# ═══════════════════════════════════════════════════════════════════════════════
 
 def get_user_by_email(email: str) -> dict | None:
     with _shared_conn() as conn:
         row = conn.execute(
-            "SELECT u.*, c.name as company_name, c.status as company_status, c.logo_url as company_logo_url, "
+            "SELECT u.*, c.name as company_name, c.status as company_status, "
+            "c.logo_url as company_logo_url, "
             "c.commercial_name, c.rccm, c.ifu, c.address, c.phone, c.contact_email "
             "FROM users u JOIN companies c ON u.company_id=c.id "
             "WHERE u.email=?", (email.lower(),)
         ).fetchone()
     return dict(row) if row else None
 
+
 def get_user_by_id(user_id: str) -> dict | None:
     with _shared_conn() as conn:
         row = conn.execute(
-            "SELECT u.*, c.name as company_name, c.status as company_status, c.logo_url as company_logo_url, "
+            "SELECT u.*, c.name as company_name, c.status as company_status, "
+            "c.logo_url as company_logo_url, "
             "c.commercial_name, c.rccm, c.ifu, c.address, c.phone, c.contact_email "
             "FROM users u JOIN companies c ON u.company_id=c.id "
             "WHERE u.id=?", (user_id,)
         ).fetchone()
     return dict(row) if row else None
+
 
 def insert_user(u: dict):
     with _shared_conn() as conn:
@@ -255,19 +461,16 @@ def insert_user(u: dict):
             "VALUES (:id,:company_id,:email,:password_hash,:role,:is_active,:email_verified,:created_at)", u
         )
 
+
 def update_user_password(user_id: str, password_hash: str):
     with _shared_conn() as conn:
-        conn.execute(
-            "UPDATE users SET password_hash=? WHERE id=?",
-            (password_hash, user_id),
-        )
+        conn.execute("UPDATE users SET password_hash=? WHERE id=?", (password_hash, user_id))
+
 
 def set_user_email_verified(user_id: str, is_verified: int = 1):
     with _shared_conn() as conn:
-        conn.execute(
-            "UPDATE users SET email_verified=? WHERE id=?",
-            (is_verified, user_id),
-        )
+        conn.execute("UPDATE users SET email_verified=? WHERE id=?", (is_verified, user_id))
+
 
 def list_users_for_company(company_id: str) -> list:
     with _shared_conn() as conn:
@@ -278,6 +481,7 @@ def list_users_for_company(company_id: str) -> list:
         ).fetchall()
     return [dict(r) for r in rows]
 
+
 def count_users_for_company(company_id: str) -> int:
     with _shared_conn() as conn:
         return conn.execute(
@@ -285,16 +489,42 @@ def count_users_for_company(company_id: str) -> int:
             (company_id,)
         ).fetchone()[0]
 
+
 def deactivate_user(user_id: str):
+    """Désactive un user ET révoque tous ses tokens actifs."""
     with _shared_conn() as conn:
         conn.execute("UPDATE users SET is_active=0 WHERE id=?", (user_id,))
+    revoke_user_tokens(user_id)
+
 
 def activate_user(user_id: str):
     with _shared_conn() as conn:
         conn.execute("UPDATE users SET is_active=1 WHERE id=?", (user_id,))
 
 
-# ─── Subscriptions ────────────────────────────────────────────────────────────
+def get_primary_user_for_company(company_id: str) -> dict | None:
+    with _shared_conn() as conn:
+        row = conn.execute(
+            "SELECT u.*, c.name as company_name, c.status as company_status, "
+            "c.logo_url as company_logo_url, "
+            "c.commercial_name, c.rccm, c.ifu, c.address, c.phone, c.contact_email "
+            "FROM users u JOIN companies c ON u.company_id=c.id "
+            "WHERE u.company_id=? AND u.is_active=1 "
+            "ORDER BY CASE u.role "
+            "WHEN 'admin' THEN 0 "
+            "WHEN 'manager' THEN 1 "
+            "WHEN 'employee' THEN 2 "
+            "WHEN 'superadmin' THEN 3 "
+            "ELSE 9 END, u.created_at ASC "
+            "LIMIT 1",
+            (company_id,),
+        ).fetchone()
+    return dict(row) if row else None
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SUBSCRIPTIONS
+# ═══════════════════════════════════════════════════════════════════════════════
 
 def get_subscription(company_id: str) -> dict | None:
     with _shared_conn() as conn:
@@ -302,6 +532,7 @@ def get_subscription(company_id: str) -> dict | None:
             "SELECT * FROM subscriptions WHERE company_id=?", (company_id,)
         ).fetchone()
     return dict(row) if row else None
+
 
 def upsert_subscription(s: dict):
     with _shared_conn() as conn:
@@ -336,15 +567,17 @@ def upsert_subscription(s: dict):
                     updated_at=excluded.updated_at
             """, s)
 
+
 def get_active_plan(company_id: str) -> str:
-    """Retourne le plan actif pour une boutique ('free' par défaut)."""
     sub = get_subscription(company_id)
     if not sub or sub["status"] not in ("active", "trialing"):
         return "free"
     return sub["plan"]
 
 
-# ─── Invitations ─────────────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════════════════
+# TOKENS (invitations, email, password reset)
+# ═══════════════════════════════════════════════════════════════════════════════
 
 def insert_invite(invite: dict):
     with _shared_conn() as conn:
@@ -353,6 +586,7 @@ def insert_invite(invite: dict):
             "VALUES (:token,:company_id,:email,:role,:expires_at,:used)", invite
         )
 
+
 def get_invite(token: str) -> dict | None:
     with _shared_conn() as conn:
         row = conn.execute(
@@ -360,83 +594,62 @@ def get_invite(token: str) -> dict | None:
         ).fetchone()
     return dict(row) if row else None
 
+
 def mark_invite_used(token: str):
     with _shared_conn() as conn:
         conn.execute("UPDATE invite_tokens SET used=1 WHERE token=?", (token,))
+
 
 def insert_email_verification_token(data: dict):
     with _shared_conn() as conn:
         conn.execute(
             "INSERT INTO email_verification_tokens (token,user_id,email,expires_at,used) "
-            "VALUES (:token,:user_id,:email,:expires_at,:used)",
-            data,
+            "VALUES (:token,:user_id,:email,:expires_at,:used)", data
         )
+
 
 def get_email_verification_token(token: str) -> dict | None:
     with _shared_conn() as conn:
         row = conn.execute(
-            "SELECT * FROM email_verification_tokens WHERE token=? AND used=0",
-            (token,),
+            "SELECT * FROM email_verification_tokens WHERE token=? AND used=0", (token,)
         ).fetchone()
     return dict(row) if row else None
 
-def get_primary_user_for_company(company_id: str) -> dict | None:
-    with _shared_conn() as conn:
-        row = conn.execute(
-            "SELECT u.*, c.name as company_name, c.status as company_status, c.logo_url as company_logo_url, "
-            "c.commercial_name, c.rccm, c.ifu, c.address, c.phone, c.contact_email "
-            "FROM users u JOIN companies c ON u.company_id=c.id "
-            "WHERE u.company_id=? AND u.is_active=1 "
-            "ORDER BY CASE u.role "
-            "WHEN 'admin' THEN 0 "
-            "WHEN 'manager' THEN 1 "
-            "WHEN 'employee' THEN 2 "
-            "WHEN 'superadmin' THEN 3 "
-            "ELSE 9 END, u.created_at ASC "
-            "LIMIT 1",
-            (company_id,),
-        ).fetchone()
-    return dict(row) if row else None
 
 def mark_email_verification_token_used(token: str):
     with _shared_conn() as conn:
-        conn.execute(
-            "UPDATE email_verification_tokens SET used=1 WHERE token=?",
-            (token,),
-        )
+        conn.execute("UPDATE email_verification_tokens SET used=1 WHERE token=?", (token,))
+
 
 def insert_password_reset_token(data: dict):
     with _shared_conn() as conn:
         conn.execute(
             "INSERT INTO password_reset_tokens (token,user_id,email,expires_at,used) "
-            "VALUES (:token,:user_id,:email,:expires_at,:used)",
-            data,
+            "VALUES (:token,:user_id,:email,:expires_at,:used)", data
         )
+
 
 def get_password_reset_token(token: str) -> dict | None:
     with _shared_conn() as conn:
         row = conn.execute(
-            "SELECT * FROM password_reset_tokens WHERE token=? AND used=0",
-            (token,),
+            "SELECT * FROM password_reset_tokens WHERE token=? AND used=0", (token,)
         ).fetchone()
     return dict(row) if row else None
 
+
 def mark_password_reset_token_used(token: str):
     with _shared_conn() as conn:
-        conn.execute(
-            "UPDATE password_reset_tokens SET used=1 WHERE token=?",
-            (token,),
-        )
+        conn.execute("UPDATE password_reset_tokens SET used=1 WHERE token=?", (token,))
+
 
 def clear_password_reset_tokens_for_user(user_id: str):
     with _shared_conn() as conn:
-        conn.execute(
-            "UPDATE password_reset_tokens SET used=1 WHERE user_id=?",
-            (user_id,),
-        )
+        conn.execute("UPDATE password_reset_tokens SET used=1 WHERE user_id=?", (user_id,))
 
 
-# ─── Super-admin global stats ─────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════════════════
+# STATS SUPER-ADMIN
+# ═══════════════════════════════════════════════════════════════════════════════
 
 def global_stats() -> dict:
     with _shared_conn() as conn:
@@ -445,10 +658,14 @@ def global_stats() -> dict:
     total_revenue = 0.0
     total_sales   = 0
     if mysql_enabled():
-        with get_conn("") as conn:
-            row = conn.execute("SELECT COUNT(*) AS count, COALESCE(SUM(total),0) AS revenue FROM sales").fetchone()
-            total_sales = row["count"] if row else 0
-            total_revenue = row["revenue"] if row else 0
+        # Connexion sans scoping tenant pour agréger toutes les boutiques
+        with mysql_conn(None) as conn:
+            row = conn.execute(
+                "SELECT COUNT(*) AS cnt, COALESCE(SUM(total),0) AS rev FROM sales"
+            ).fetchone()
+            if row:
+                total_sales   = int(row["cnt"])
+                total_revenue = float(row["rev"])
     else:
         for db_file in cfg.DATA_DIR.glob("erp_*.db"):
             try:
@@ -460,302 +677,60 @@ def global_stats() -> dict:
             except Exception:
                 pass
     return {
-        "companies": n_companies,
-        "users":     n_users,
+        "companies":     n_companies,
+        "users":         n_users,
         "total_sales":   total_sales,
         "total_revenue": total_revenue,
     }
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# BASE PAR BOUTIQUE  erp_{company_id}.db
+# PRODUITS
 # ═══════════════════════════════════════════════════════════════════════════════
-
-def _tenant_path(company_id: str) -> Path:
-    safe = "".join(c if c.isalnum() or c in "-_" else "_" for c in company_id)
-    return cfg.DATA_DIR / f"erp_{safe}.db"
-
-
-def tenant_ids() -> list[str]:
-    if mysql_enabled():
-        with _shared_conn() as conn:
-            rows = conn.execute("SELECT id FROM companies WHERE status='active'").fetchall()
-        return [row["id"] for row in rows]
-    return [
-        f.stem[4:]
-        for f in cfg.DATA_DIR.glob("erp_*.db")
-    ]
-
-
-def get_conn(company_id: str):
-    if mysql_enabled():
-        conn = mysql_conn(company_id or None)
-        conn.executescript("CREATE TABLE IF NOT EXISTS products")
-        return conn
-    cfg.DATA_DIR.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(_tenant_path(company_id)))
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA foreign_keys=ON")
-    conn.executescript("""
-        CREATE TABLE IF NOT EXISTS products (
-            id                    TEXT PRIMARY KEY,
-            sku                   TEXT,
-            name                  TEXT NOT NULL,
-            description           TEXT,
-            price                 REAL NOT NULL,
-            stock                 INTEGER NOT NULL DEFAULT 0,
-            image_url             TEXT,
-            reference_image_url   TEXT,
-            reference_image_hash  TEXT,
-            consumer_code         TEXT,
-            created_at            TEXT NOT NULL,
-            updated_at            TEXT NOT NULL
-        );
-        CREATE INDEX IF NOT EXISTS idx_prod_consumer ON products(consumer_code);
-        CREATE INDEX IF NOT EXISTS idx_prod_sku      ON products(sku);
-
-        CREATE TABLE IF NOT EXISTS sales (
-            id         TEXT PRIMARY KEY,
-            reference  TEXT NOT NULL,
-            source     TEXT DEFAULT 'dashboard',
-            items      TEXT NOT NULL,
-            total      REAL NOT NULL DEFAULT 0,
-            customer   TEXT,
-            note       TEXT,
-            created_by_user_id TEXT,
-            created_by_email   TEXT,
-            created_by_role    TEXT,
-            created_at TEXT NOT NULL
-        );
-        CREATE TABLE IF NOT EXISTS audit_logs (
-            id           TEXT PRIMARY KEY,
-            user_id      TEXT,
-            user_email   TEXT,
-            user_role    TEXT,
-            action       TEXT NOT NULL,
-            object_type  TEXT NOT NULL,
-            object_id    TEXT,
-            object_label TEXT,
-            details      TEXT NOT NULL DEFAULT '{}',
-            created_at   TEXT NOT NULL
-        );
-        CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_logs(created_at);
-        CREATE INDEX IF NOT EXISTS idx_audit_user    ON audit_logs(user_id);
-        CREATE INDEX IF NOT EXISTS idx_audit_object  ON audit_logs(object_type, object_id);
-
-        CREATE TABLE IF NOT EXISTS auth_codes (
-            id         TEXT PRIMARY KEY,
-            product_id TEXT NOT NULL,
-            code       TEXT NOT NULL UNIQUE,
-            status     TEXT NOT NULL DEFAULT 'active',
-            created_at TEXT NOT NULL,
-            FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
-        );
-        CREATE INDEX IF NOT EXISTS idx_codes_product ON auth_codes(product_id);
-        CREATE INDEX IF NOT EXISTS idx_codes_code    ON auth_codes(code);
-
-        CREATE TABLE IF NOT EXISTS verifications (
-            id          TEXT PRIMARY KEY,
-            code_id     TEXT,
-            product_id  TEXT NOT NULL,
-            verified_at TEXT NOT NULL,
-            latitude    REAL,
-            longitude   REAL,
-            city        TEXT,
-            country     TEXT,
-            ip_address  TEXT,
-            user_agent  TEXT,
-            code_value  TEXT,
-            attempt_type TEXT NOT NULL DEFAULT 'valid',
-            is_valid    INTEGER NOT NULL DEFAULT 1,
-            is_fraud    INTEGER NOT NULL DEFAULT 0,
-            note        TEXT,
-            FOREIGN KEY (code_id) REFERENCES auth_codes(id)
-        );
-        CREATE INDEX IF NOT EXISTS idx_verif_product ON verifications(product_id);
-        CREATE INDEX IF NOT EXISTS idx_verif_code    ON verifications(code_id);
-    """)
-    sale_columns = {
-        row["name"]
-        for row in conn.execute("PRAGMA table_info(sales)").fetchall()
-    }
-    if "created_by_user_id" not in sale_columns:
-        conn.execute("ALTER TABLE sales ADD COLUMN created_by_user_id TEXT")
-    if "created_by_email" not in sale_columns:
-        conn.execute("ALTER TABLE sales ADD COLUMN created_by_email TEXT")
-    if "created_by_role" not in sale_columns:
-        conn.execute("ALTER TABLE sales ADD COLUMN created_by_role TEXT")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_sales_user ON sales(created_by_user_id)")
-
-    columns = {
-        row["name"]
-        for row in conn.execute("PRAGMA table_info(verifications)").fetchall()
-    }
-    if "code_value" not in columns:
-        conn.execute("ALTER TABLE verifications ADD COLUMN code_value TEXT")
-    if "attempt_type" not in columns:
-        conn.execute("ALTER TABLE verifications ADD COLUMN attempt_type TEXT NOT NULL DEFAULT 'valid'")
-    if "is_valid" not in columns:
-        conn.execute("ALTER TABLE verifications ADD COLUMN is_valid INTEGER NOT NULL DEFAULT 1")
-    if "is_fraud" not in columns:
-        conn.execute("ALTER TABLE verifications ADD COLUMN is_fraud INTEGER NOT NULL DEFAULT 0")
-    if "note" not in columns:
-        conn.execute("ALTER TABLE verifications ADD COLUMN note TEXT")
-    return conn
-
-
-def init_tenant_db(company_id: str):
-    """Crée toutes les tables pour une nouvelle boutique."""
-    with get_conn(company_id) as conn:
-        conn.executescript("""
-            CREATE TABLE IF NOT EXISTS products (
-                id                    TEXT PRIMARY KEY,
-                sku                   TEXT,
-                name                  TEXT NOT NULL,
-                description           TEXT,
-                price                 REAL NOT NULL,
-                stock                 INTEGER NOT NULL DEFAULT 0,
-                image_url             TEXT,
-                reference_image_url   TEXT,
-                reference_image_hash  TEXT,
-                consumer_code         TEXT,
-                created_at            TEXT NOT NULL,
-                updated_at            TEXT NOT NULL
-            );
-            CREATE INDEX IF NOT EXISTS idx_prod_consumer ON products(consumer_code);
-            CREATE INDEX IF NOT EXISTS idx_prod_sku      ON products(sku);
-
-            CREATE TABLE IF NOT EXISTS sales (
-                id         TEXT PRIMARY KEY,
-                reference  TEXT NOT NULL,
-                source     TEXT DEFAULT 'dashboard',
-                items      TEXT NOT NULL,
-            total      REAL NOT NULL DEFAULT 0,
-            customer   TEXT,
-            note       TEXT,
-            created_by_user_id TEXT,
-            created_by_email   TEXT,
-            created_by_role    TEXT,
-            created_at TEXT NOT NULL
-        );
-        CREATE TABLE IF NOT EXISTS audit_logs (
-            id           TEXT PRIMARY KEY,
-            user_id      TEXT,
-            user_email   TEXT,
-            user_role    TEXT,
-            action       TEXT NOT NULL,
-            object_type  TEXT NOT NULL,
-            object_id    TEXT,
-            object_label TEXT,
-            details      TEXT NOT NULL DEFAULT '{}',
-            created_at   TEXT NOT NULL
-        );
-        CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_logs(created_at);
-        CREATE INDEX IF NOT EXISTS idx_audit_user    ON audit_logs(user_id);
-        CREATE INDEX IF NOT EXISTS idx_audit_object  ON audit_logs(object_type, object_id);
-
-            CREATE TABLE IF NOT EXISTS auth_codes (
-                id         TEXT PRIMARY KEY,
-                product_id TEXT NOT NULL,
-                code       TEXT NOT NULL UNIQUE,
-                status     TEXT NOT NULL DEFAULT 'active',
-                created_at TEXT NOT NULL,
-                FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
-            );
-            CREATE INDEX IF NOT EXISTS idx_codes_product ON auth_codes(product_id);
-            CREATE INDEX IF NOT EXISTS idx_codes_code    ON auth_codes(code);
-
-            CREATE TABLE IF NOT EXISTS verifications (
-                id          TEXT PRIMARY KEY,
-                code_id     TEXT,
-                product_id  TEXT NOT NULL,
-                verified_at TEXT NOT NULL,
-                latitude    REAL,
-                longitude   REAL,
-                city        TEXT,
-                country     TEXT,
-                ip_address  TEXT,
-                user_agent  TEXT,
-                code_value  TEXT,
-                attempt_type TEXT NOT NULL DEFAULT 'valid',
-                is_valid    INTEGER NOT NULL DEFAULT 1,
-                is_fraud    INTEGER NOT NULL DEFAULT 0,
-                note        TEXT,
-                FOREIGN KEY (code_id) REFERENCES auth_codes(id)
-            );
-            CREATE INDEX IF NOT EXISTS idx_verif_product ON verifications(product_id);
-            CREATE INDEX IF NOT EXISTS idx_verif_code    ON verifications(code_id);
-        """)
-        sale_columns = {
-            row["name"]
-            for row in conn.execute("PRAGMA table_info(sales)").fetchall()
-        }
-        if "created_by_user_id" not in sale_columns:
-            conn.execute("ALTER TABLE sales ADD COLUMN created_by_user_id TEXT")
-        if "created_by_email" not in sale_columns:
-            conn.execute("ALTER TABLE sales ADD COLUMN created_by_email TEXT")
-        if "created_by_role" not in sale_columns:
-            conn.execute("ALTER TABLE sales ADD COLUMN created_by_role TEXT")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_sales_user ON sales(created_by_user_id)")
-
-        columns = {
-            row["name"]
-            for row in conn.execute("PRAGMA table_info(verifications)").fetchall()
-        }
-        if "code_value" not in columns:
-            conn.execute("ALTER TABLE verifications ADD COLUMN code_value TEXT")
-        if "attempt_type" not in columns:
-            conn.execute("ALTER TABLE verifications ADD COLUMN attempt_type TEXT NOT NULL DEFAULT 'valid'")
-        if "is_valid" not in columns:
-            conn.execute("ALTER TABLE verifications ADD COLUMN is_valid INTEGER NOT NULL DEFAULT 1")
-        if "is_fraud" not in columns:
-            conn.execute("ALTER TABLE verifications ADD COLUMN is_fraud INTEGER NOT NULL DEFAULT 0")
-        if "note" not in columns:
-            conn.execute("ALTER TABLE verifications ADD COLUMN note TEXT")
-
-
-# ─── Produits ─────────────────────────────────────────────────────────────────
 
 def _blank_product(p: dict) -> dict:
     defaults = {"image_url": None, "reference_image_url": None,
                 "reference_image_hash": None, "consumer_code": None}
     return {**defaults, **p}
 
+
 def all_products(company_id: str) -> list:
     with get_conn(company_id) as conn:
         rows = conn.execute("SELECT * FROM products ORDER BY name").fetchall()
     return [dict(r) for r in rows]
 
+
 def count_products(company_id: str) -> int:
     with get_conn(company_id) as conn:
         return conn.execute("SELECT COUNT(*) FROM products").fetchone()[0]
+
 
 def get_product(company_id: str, product_id: str) -> dict | None:
     with get_conn(company_id) as conn:
         row = conn.execute("SELECT * FROM products WHERE id=?", (product_id,)).fetchone()
     return dict(row) if row else None
 
+
 def get_product_by_sku(company_id: str, sku: str) -> dict | None:
     with get_conn(company_id) as conn:
         row = conn.execute("SELECT * FROM products WHERE sku=?", (sku,)).fetchone()
     return dict(row) if row else None
 
+
 def get_product_by_consumer_code(company_id: str, code: str) -> dict | None:
     with get_conn(company_id) as conn:
-        row = conn.execute(
-            "SELECT * FROM products WHERE consumer_code=?", (code,)
-        ).fetchone()
+        row = conn.execute("SELECT * FROM products WHERE consumer_code=?", (code,)).fetchone()
     return dict(row) if row else None
+
 
 def get_product_by_name(company_id: str, name: str) -> dict | None:
     normalized = name.strip().lower()
     with get_conn(company_id) as conn:
         row = conn.execute(
-            "SELECT * FROM products WHERE lower(trim(name))=?",
-            (normalized,),
+            "SELECT * FROM products WHERE lower(trim(name))=?", (normalized,)
         ).fetchone()
     return dict(row) if row else None
+
 
 def insert_product(company_id: str, p: dict):
     p = _blank_product(p)
@@ -770,6 +745,7 @@ def insert_product(company_id: str, p: dict):
                  :image_url,:reference_image_url,:reference_image_hash,
                  :consumer_code,:created_at,:updated_at)
         """, p)
+
 
 def update_product_full(company_id: str, p: dict):
     p = _blank_product(p)
@@ -786,6 +762,7 @@ def update_product_full(company_id: str, p: dict):
             WHERE id=:id
         """, p)
 
+
 def update_product_image(company_id: str, product_id: str,
                          image_url, ref_image_url, ref_image_hash, updated_at):
     with get_conn(company_id) as conn:
@@ -796,6 +773,7 @@ def update_product_image(company_id: str, product_id: str,
             WHERE id=?
         """, (image_url, ref_image_url, ref_image_hash, updated_at, product_id))
 
+
 def update_stock(company_id: str, product_id: str, new_stock: int, updated_at: str):
     with get_conn(company_id) as conn:
         conn.execute(
@@ -803,18 +781,24 @@ def update_stock(company_id: str, product_id: str, new_stock: int, updated_at: s
             (new_stock, updated_at, product_id)
         )
 
+
 def delete_product(company_id: str, product_id: str):
     with get_conn(company_id) as conn:
         conn.execute("DELETE FROM products WHERE id=?", (product_id,))
 
 
-# ─── Ventes ───────────────────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════════════════
+# VENTES
+# ═══════════════════════════════════════════════════════════════════════════════
 
 def _sale_row(row) -> dict | None:
-    if not row: return None
+    if not row:
+        return None
     d = dict(row)
-    d["items"] = json.loads(d["items"])
+    if isinstance(d.get("items"), str):
+        d["items"] = json.loads(d["items"])
     return d
+
 
 def all_sales(company_id: str, created_by_user_id: str | None = None) -> list:
     with get_conn(company_id) as conn:
@@ -827,18 +811,20 @@ def all_sales(company_id: str, created_by_user_id: str | None = None) -> list:
             rows = conn.execute("SELECT * FROM sales ORDER BY created_at DESC").fetchall()
     return [_sale_row(r) for r in rows]
 
+
 def count_sales_this_month(company_id: str) -> int:
-    from datetime import datetime
     month_start = datetime.now().strftime("%Y-%m-01")
     with get_conn(company_id) as conn:
         return conn.execute(
             "SELECT COUNT(*) FROM sales WHERE created_at >= ?", (month_start,)
         ).fetchone()[0]
 
+
 def get_sale(company_id: str, sale_id: str) -> dict | None:
     with get_conn(company_id) as conn:
         row = conn.execute("SELECT * FROM sales WHERE id=?", (sale_id,)).fetchone()
     return _sale_row(row)
+
 
 def insert_sale(company_id: str, s: dict):
     items_json = json.dumps(s.get("items", []), ensure_ascii=False)
@@ -853,9 +839,9 @@ def insert_sale(company_id: str, s: dict):
         """, {**s, "items": items_json})
 
 
-# ─── Auth codes ───────────────────────────────────────────────────────────────
-
-# --- Audit logs --------------------------------------------------------------
+# ═══════════════════════════════════════════════════════════════════════════════
+# AUDIT LOGS
+# ═══════════════════════════════════════════════════════════════════════════════
 
 def insert_audit_log(company_id: str, entry: dict):
     payload = {
@@ -872,6 +858,7 @@ def insert_audit_log(company_id: str, entry: dict):
                  :object_id,:object_label,:details,:created_at)
         """, payload)
 
+
 def list_audit_logs(company_id: str, user_id: str | None = None, limit: int = 100) -> list:
     limit = max(1, min(limit, 500))
     with get_conn(company_id) as conn:
@@ -882,8 +869,7 @@ def list_audit_logs(company_id: str, user_id: str | None = None, limit: int = 10
             ).fetchall()
         else:
             rows = conn.execute(
-                "SELECT * FROM audit_logs ORDER BY created_at DESC LIMIT ?",
-                (limit,),
+                "SELECT * FROM audit_logs ORDER BY created_at DESC LIMIT ?", (limit,)
             ).fetchall()
     result = []
     for row in rows:
@@ -896,6 +882,10 @@ def list_audit_logs(company_id: str, user_id: str | None = None, limit: int = 10
     return result
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# AUTH CODES & VÉRIFICATIONS
+# ═══════════════════════════════════════════════════════════════════════════════
+
 def insert_auth_code(company_id: str, c: dict):
     with get_conn(company_id) as conn:
         conn.execute(
@@ -903,19 +893,23 @@ def insert_auth_code(company_id: str, c: dict):
             "VALUES (:id,:product_id,:code,:status,:created_at)", c
         )
 
+
 def get_auth_code_by_value(company_id: str, code: str) -> dict | None:
     with get_conn(company_id) as conn:
         row = conn.execute("SELECT * FROM auth_codes WHERE code=?", (code,)).fetchone()
     return dict(row) if row else None
+
 
 def get_auth_code_by_id(company_id: str, code_id: str) -> dict | None:
     with get_conn(company_id) as conn:
         row = conn.execute("SELECT * FROM auth_codes WHERE id=?", (code_id,)).fetchone()
     return dict(row) if row else None
 
+
 def mark_code_used(company_id: str, code_id: str):
     with get_conn(company_id) as conn:
         conn.execute("UPDATE auth_codes SET status='used' WHERE id=?", (code_id,))
+
 
 def get_codes_for_product(company_id: str, product_id: str) -> list:
     with get_conn(company_id) as conn:
@@ -930,8 +924,6 @@ def get_codes_for_product(company_id: str, product_id: str) -> list:
     return [dict(r) for r in rows]
 
 
-# ─── Vérifications ────────────────────────────────────────────────────────────
-
 def insert_verification(company_id: str, v: dict):
     with get_conn(company_id) as conn:
         conn.execute("""
@@ -945,6 +937,7 @@ def insert_verification(company_id: str, v: dict):
                  :is_valid,:is_fraud,:note)
         """, v)
 
+
 def all_verifications(company_id: str) -> list:
     with get_conn(company_id) as conn:
         rows = conn.execute("""
@@ -955,6 +948,7 @@ def all_verifications(company_id: str) -> list:
             ORDER BY v.verified_at DESC
         """).fetchall()
     return [dict(r) for r in rows]
+
 
 def get_verification_stats(company_id: str) -> dict:
     with get_conn(company_id) as conn:
@@ -978,6 +972,7 @@ def get_verification_stats(company_id: str) -> dict:
         "fraud_attempts": fraud_attempts,
     }
 
+
 def auth_code_aggregate_stats(company_id: str) -> dict:
     with get_conn(company_id) as conn:
         total_codes = conn.execute("SELECT COUNT(*) FROM auth_codes").fetchone()[0]
@@ -986,13 +981,19 @@ def auth_code_aggregate_stats(company_id: str) -> dict:
         fake = conn.execute(
             "SELECT COUNT(*) FROM verifications WHERE is_fraud=1"
         ).fetchone()[0]
-    return {"total_codes": total_codes, "used_codes": used_codes,
-            "total_verifications": total_verif, "fake_attempts": fake}
+    return {
+        "total_codes":         total_codes,
+        "used_codes":          used_codes,
+        "total_verifications": total_verif,
+        "fake_attempts":       fake,
+    }
 
 
-# ─── Init ─────────────────────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════════════════
+# INIT AU DÉMARRAGE
+# ═══════════════════════════════════════════════════════════════════════════════
 init_shared_db()
 if mysql_enabled():
     print(f"[DB] MySQL -> {cfg.MYSQL_HOST}:{cfg.MYSQL_PORT}/{cfg.MYSQL_DATABASE}")
 else:
-    print(f"[DB] Base partagee -> {SHARED_DB}")
+    print(f"[DB] SQLite partagee -> {SHARED_DB}")

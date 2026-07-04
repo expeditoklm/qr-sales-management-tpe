@@ -1,6 +1,11 @@
 """
-auth.py — v4.0
-JWT Bearer + bcrypt + dépendances FastAPI pour protection des routes
+auth.py — v5.0
+JWT Bearer + bcrypt + dépendances FastAPI pour protection des routes.
+
+Nouveautés v5 :
+  • Vérification token_blacklist sur chaque requête authentifiée
+  • Vérification revoked_before (révocation en masse lors du deactivate_user)
+  • revoke_token() pour le logout serveur-side
 """
 import uuid, secrets
 from datetime import datetime, timedelta, timezone
@@ -27,6 +32,7 @@ _bearer = HTTPBearer(auto_error=False)
 
 def hash_password(plain: str) -> str:
     return bcrypt.hashpw(plain.encode(), bcrypt.gensalt(rounds=12)).decode()
+
 
 def verify_password(plain: str, hashed: str) -> bool:
     try:
@@ -94,6 +100,54 @@ def _decode_jwt(token: str) -> dict:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# RÉVOCATION DE TOKEN
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def revoke_token(token: str) -> None:
+    """
+    Blackliste un token JWT (access ou refresh).
+    Utilisé lors du logout ou du kick d'un employé.
+    """
+    try:
+        payload = _decode_jwt(token)
+        jti        = payload.get("jti")
+        user_id    = payload.get("sub", "")
+        exp        = payload.get("exp", 0)
+        if not jti:
+            return
+        expires_at = datetime.fromtimestamp(exp, tz=timezone.utc).isoformat()
+        db.blacklist_token(jti, user_id, expires_at)
+    except HTTPException:
+        pass  # token déjà expiré, pas besoin de blacklister
+
+
+def _check_token_not_revoked(payload: dict) -> None:
+    """
+    Double vérification :
+      1. JTI dans token_blacklist (logout individuel)
+      2. Token émis avant revoked_before (déactivation user)
+    """
+    jti     = payload.get("jti")
+    user_id = payload.get("sub", "")
+    iat     = payload.get("iat")  # issued-at timestamp
+
+    # 1. Blacklist JTI
+    if jti and db.is_token_blacklisted(jti):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Token révoqué")
+
+    # 2. revoked_before (révocation en masse)
+    if iat and user_id:
+        revoked_before = db.get_user_revoked_before(user_id)
+        if revoked_before:
+            token_iat = datetime.fromtimestamp(iat, tz=timezone.utc).isoformat()
+            if token_iat < revoked_before:
+                raise HTTPException(
+                    status.HTTP_401_UNAUTHORIZED,
+                    "Session révoquée. Veuillez vous reconnecter."
+                )
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # DÉPENDANCES FastAPI
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -102,6 +156,8 @@ class TokenData:
         self.user_id:    str = payload["sub"]
         self.company_id: str = payload["company_id"]
         self.role:       str = payload.get("role", "employee")
+        # On conserve le payload brut pour la révocation lors du logout
+        self._payload: dict = payload
 
     @property
     def is_admin(self) -> bool:
@@ -111,12 +167,22 @@ class TokenData:
     def is_superadmin(self) -> bool:
         return self.role == "superadmin"
 
+    @property
+    def jti(self) -> str | None:
+        return self._payload.get("jti")
+
+    @property
+    def exp(self) -> int | None:
+        return self._payload.get("exp")
+
 
 def _extract_bearer(creds: HTTPAuthorizationCredentials | None) -> str:
     if not creds:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED,
-                            "Authorization Bearer requis",
-                            headers={"WWW-Authenticate": "Bearer"})
+        raise HTTPException(
+            status.HTTP_401_UNAUTHORIZED,
+            "Authorization Bearer requis",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     return creds.credentials
 
 
@@ -127,11 +193,15 @@ async def get_current_user(
     payload = _decode_jwt(token)
     if payload.get("type") != "access":
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Token de type invalide")
+
+    # Vérifier révocation (blacklist + revoked_before)
+    _check_token_not_revoked(payload)
+
     # Vérifier que l'entreprise est active
     company = db.get_company(payload["company_id"])
     if not company or company["status"] != "active":
-        raise HTTPException(status.HTTP_403_FORBIDDEN,
-                            "Compte suspendu ou introuvable")
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Compte suspendu ou introuvable")
+
     return TokenData(payload)
 
 
@@ -139,8 +209,7 @@ async def get_admin_user(
     current: Annotated[TokenData, Depends(get_current_user)]
 ) -> TokenData:
     if not current.is_admin:
-        raise HTTPException(status.HTTP_403_FORBIDDEN,
-                            "Rôle admin requis")
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Rôle admin requis")
     return current
 
 
@@ -155,8 +224,6 @@ async def get_superadmin_user(
 
 
 # ─── Compatibilité ascendante : API Key header (optionnel) ───────────────────
-# Permet aux clients Flutter anciens de continuer à fonctionner en parallèle
-# pendant la migration. Retourne un TokenData minimal.
 from fastapi.security import APIKeyHeader as _APIKeyHeader
 from fastapi import Security as _Security
 
@@ -177,13 +244,17 @@ async def get_current_user_or_apikey(
         company = db.get_company_by_secret_key(api_key.strip())
         if company:
             return TokenData({
-                "sub": "legacy",
+                "sub":        "legacy",
                 "company_id": company["id"],
-                "role": "admin",
-                "type": "access",
-                "exp": (datetime.now(timezone.utc) + timedelta(hours=1)).timestamp(),
+                "role":       "admin",
+                "type":       "access",
+                "exp":        int((_now_utc() + timedelta(hours=1)).timestamp()),
+                "iat":        int(_now_utc().timestamp()),
+                "jti":        None,
             })
 
-    raise HTTPException(status.HTTP_401_UNAUTHORIZED,
-                        "Bearer JWT ou X-API-Key requis",
-                        headers={"WWW-Authenticate": "Bearer"})
+    raise HTTPException(
+        status.HTTP_401_UNAUTHORIZED,
+        "Bearer JWT ou X-API-Key requis",
+        headers={"WWW-Authenticate": "Bearer"},
+    )

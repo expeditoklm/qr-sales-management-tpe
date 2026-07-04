@@ -19,6 +19,15 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Annotated, List
 
+# ─── Sentry — monitoring des erreurs (configurer SENTRY_DSN dans .env) ───────
+try:
+    import sentry_sdk
+    from sentry_sdk.integrations.fastapi import FastApiIntegration
+    from sentry_sdk.integrations.starlette import StarletteIntegration
+    _sentry_ready = True
+except ImportError:
+    _sentry_ready = False
+
 from fastapi import (
     FastAPI, HTTPException, Depends, Request,
     UploadFile, File, status, Query
@@ -34,6 +43,7 @@ from auth import (
     create_access_token, create_refresh_token, create_invite_token,
     get_current_user, get_admin_user, get_superadmin_user,
     get_current_user_or_apikey,
+    revoke_token,
     TokenData,
     _decode_jwt,
 )
@@ -47,6 +57,21 @@ from quota import (
 )
 
 cfg = get_settings()
+
+# ─── Sentry init ──────────────────────────────────────────────────────────────
+if _sentry_ready and cfg.SENTRY_DSN:
+    sentry_sdk.init(
+        dsn=cfg.SENTRY_DSN,
+        integrations=[
+            StarletteIntegration(transaction_style="url"),
+            FastApiIntegration(transaction_style="url"),
+        ],
+        traces_sample_rate=cfg.SENTRY_TRACES_SAMPLE_RATE,
+        send_default_pii=False,  # RGPD : pas de données perso dans les traces
+    )
+    print(f"[Sentry] Monitoring activé (sample={cfg.SENTRY_TRACES_SAMPLE_RATE})")
+else:
+    print("[Sentry] Désactivé (SENTRY_DSN non configuré)")
 
 # ─── Paths ────────────────────────────────────────────────────────────────────
 # ─── Paths ────────────────────────────────────────────────────────────────────
@@ -64,7 +89,7 @@ _rl_login  = make_limiter(cfg.RATE_LIMIT_LOGIN_REQUESTS,  cfg.RATE_LIMIT_LOGIN_W
 app = FastAPI(
     title="QuickSellPay",
     description="Gestion stock, ventes & authenticité produits — multi-tenant SaaS",
-    version="4.0.0",
+    version="5.0.0",
 )
 
 app.add_middleware(
@@ -281,8 +306,9 @@ def page_privacy():
 def health():
     return {
         "status":     "healthy",
-        "version":    "4.0.0",
+        "version":    "5.0.0",
         "timestamp":  datetime.now().isoformat(),
+        "db_engine":  "mysql" if __import__("db_driver").mysql_enabled() else "sqlite",
         "verify_url": "/verify",
     }
 
@@ -574,11 +600,43 @@ def refresh(payload: RefreshRequest):
     p = _decode_jwt(payload.refresh_token)
     if p.get("type") != "refresh":
         raise HTTPException(401, "Token de type invalide")
+    # Vérifier que le refresh token n'est pas révoqué
+    jti     = p.get("jti")
+    user_id = p.get("sub", "")
+    if jti and db.is_token_blacklisted(jti):
+        raise HTTPException(401, "Session révoquée. Veuillez vous reconnecter.")
+    revoked_before = db.get_user_revoked_before(user_id)
+    if revoked_before:
+        token_iat = datetime.fromtimestamp(p.get("iat", 0), tz=timezone.utc).isoformat()
+        if token_iat < revoked_before:
+            raise HTTPException(401, "Session révoquée. Veuillez vous reconnecter.")
     user    = db.get_user_by_id(p["sub"])
     if not user or not user["is_active"]:
         raise HTTPException(401, "Utilisateur inactif")
+    # Blacklister l'ancien refresh token (rotation)
+    revoke_token(payload.refresh_token)
     company = db.get_company(p["company_id"])
     return _token_response_for_user(user, company)
+
+
+@app.post("/auth/logout", response_model=None, status_code=204, tags=["Auth"])
+def logout(
+    request: Request,
+    current: Annotated[TokenData, Depends(get_current_user)],
+):
+    """
+    Déconnexion serveur-side : blackliste le token courant.
+    Passer optionnellement le refresh_token dans le corps pour le révoquer aussi.
+    """
+    # Révoquer l'access token
+    raw_access = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+    if raw_access:
+        revoke_token(raw_access)
+
+    # Nettoyage périodique de la blacklist (1% des requêtes logout)
+    import random as _rnd
+    if _rnd.random() < 0.01:
+        db.cleanup_blacklist()
 
 
 @app.post("/auth/invite", status_code=201, tags=["Auth"])
