@@ -72,6 +72,8 @@ def init_shared_db():
                 address         TEXT,
                 phone           TEXT,
                 contact_email   TEXT,
+                is_vat_registered INTEGER NOT NULL DEFAULT 1,
+                mecef_token     TEXT,
                 plan            TEXT NOT NULL DEFAULT 'free',
                 status          TEXT NOT NULL DEFAULT 'active',
                 created_at      TEXT NOT NULL
@@ -152,12 +154,42 @@ def init_shared_db():
             _sqlite_add_column_if_missing(conn, "companies", "contact_email",    "TEXT")
             _sqlite_add_column_if_missing(conn, "users", "email_verified",  "INTEGER NOT NULL DEFAULT 0")
             _sqlite_add_column_if_missing(conn, "users", "revoked_before",  "TEXT")
+            _sqlite_add_column_if_missing(conn, "companies", "is_vat_registered", "INTEGER NOT NULL DEFAULT 1")
+            _sqlite_add_column_if_missing(conn, "companies", "mecef_token",       "TEXT")
 
+
+        else:
+            # MySQL migrations (colonnes ajoutees apres creation initiale de la table)
+            _mysql_add_column_if_missing(conn, "companies", "secret_key",      "TEXT NOT NULL DEFAULT ''")
+            _mysql_add_column_if_missing(conn, "companies", "logo_url",         "TEXT")
+            _mysql_add_column_if_missing(conn, "companies", "commercial_name",  "TEXT")
+            _mysql_add_column_if_missing(conn, "companies", "rccm",             "TEXT")
+            _mysql_add_column_if_missing(conn, "companies", "ifu",              "TEXT")
+            _mysql_add_column_if_missing(conn, "companies", "address",          "TEXT")
+            _mysql_add_column_if_missing(conn, "companies", "phone",            "TEXT")
+            _mysql_add_column_if_missing(conn, "companies", "contact_email",    "TEXT")
+            _mysql_add_column_if_missing(conn, "users",     "email_verified",   "INTEGER NOT NULL DEFAULT 0")
+            _mysql_add_column_if_missing(conn, "users",     "revoked_before",   "TEXT")
+            _mysql_add_column_if_missing(conn, "companies", "is_vat_registered","INTEGER NOT NULL DEFAULT 1")
+            _mysql_add_column_if_missing(conn, "companies", "mecef_token",      "TEXT")
 
 def _sqlite_add_column_if_missing(conn, table: str, column: str, definition: str):
     cols = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
     if column not in cols:
         conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+
+
+def _mysql_add_column_if_missing(conn, table: str, column: str, definition: str):
+    """Idempotent ALTER TABLE pour MySQL (verifie information_schema)."""
+    row = conn.execute(
+        "SELECT COUNT(*) FROM information_schema.COLUMNS "
+        "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s AND COLUMN_NAME = %s",
+        (table, column),
+    ).fetchone()
+    count = list(row.values())[0] if isinstance(row, dict) else row[0]
+    if count == 0:
+        conn.execute(f"ALTER TABLE `{table}` ADD COLUMN `{column}` {definition}")
+
 
 
 def _ensure_tenant_schema(conn):
@@ -368,9 +400,9 @@ def insert_company(c: dict):
     with _shared_conn() as conn:
         conn.execute(
             "INSERT INTO companies ("
-            "id,name,email,secret_key,logo_url,commercial_name,rccm,ifu,address,phone,contact_email,plan,status,created_at"
+            "id,name,email,secret_key,logo_url,commercial_name,rccm,ifu,address,phone,contact_email,is_vat_registered,mecef_token,plan,status,created_at"
             ") VALUES ("
-            ":id,:name,:email,:secret_key,:logo_url,:commercial_name,:rccm,:ifu,:address,:phone,:contact_email,:plan,:status,:created_at"
+            ":id,:name,:email,:secret_key,:logo_url,:commercial_name,:rccm,:ifu,:address,:phone,:contact_email,:is_vat_registered,:mecef_token,:plan,:status,:created_at"
             ")",
             c,
         )
@@ -411,7 +443,8 @@ def update_company_profile(company_id: str, payload: dict):
         conn.execute(
             "UPDATE companies SET "
             "name=:name, commercial_name=:commercial_name, rccm=:rccm, ifu=:ifu, "
-            "address=:address, phone=:phone, contact_email=:contact_email "
+            "address=:address, phone=:phone, contact_email=:contact_email, "
+            "is_vat_registered=:is_vat_registered, mecef_token=:mecef_token "
             "WHERE id=:company_id",
             {
                 "company_id": company_id,
@@ -422,6 +455,8 @@ def update_company_profile(company_id: str, payload: dict):
                 "address": payload["address"],
                 "phone": payload["phone"],
                 "contact_email": payload["contact_email"],
+                "is_vat_registered": payload.get("is_vat_registered", 1),
+                "mecef_token": payload.get("mecef_token"),
             },
         )
 

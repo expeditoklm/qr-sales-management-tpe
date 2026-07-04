@@ -51,6 +51,7 @@ from models import *
 from rate_limit import make_limiter
 from storage import save_company_logo, save_product_image
 from email_utils import send_email
+import fedapay as feda
 from quota import (
     check_product_quota, check_user_quota,
     check_transaction_quota, check_subscription_active,
@@ -138,6 +139,8 @@ def _token_response_for_user(user: dict, company: dict | None = None) -> TokenRe
         address=company.get("address") if company else None,
         phone=company.get("phone") if company else None,
         contact_email=company.get("contact_email") if company else None,
+        is_vat_registered=bool(company.get("is_vat_registered", True)) if company else True,
+        mecef_token=company.get("mecef_token") if company else None,
     )
 
 
@@ -155,6 +158,8 @@ def _branding_payload(company_id: str) -> CompanyBrandingOut:
         address=company.get("address"),
         phone=company.get("phone"),
         contact_email=company.get("contact_email"),
+        is_vat_registered=bool(company.get("is_vat_registered", True)),
+        mecef_token=company.get("mecef_token"),
     )
 
 
@@ -296,6 +301,12 @@ def page_terms():
 @app.get("/privacy", response_class=HTMLResponse, include_in_schema=False)
 def page_privacy():
     return HTMLResponse((FRONTEND_DIR / "privacy.html").read_text(encoding="utf-8"))
+
+
+@app.get("/billing",       response_class=HTMLResponse, include_in_schema=False)
+@app.get("/billing.html",  response_class=HTMLResponse, include_in_schema=False)
+def page_billing():
+    return HTMLResponse((FRONTEND_DIR / "billing.html").read_text(encoding="utf-8"))
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -454,6 +465,8 @@ def register(payload: RegisterRequest):
         "address": payload.address,
         "phone": payload.phone,
         "contact_email": payload.contact_email,
+        "is_vat_registered": int(payload.is_vat_registered),
+        "mecef_token": payload.mecef_token,
         "email": payload.email, "plan": "free",
         "status": "active", "created_at": now,
     })
@@ -657,13 +670,41 @@ def invite_user(
         object_label=payload.email,
         details={"email": payload.email, "role": payload.role},
     )
-    # En prod : envoyer par email. Ici on retourne le lien.
+    company   = db.get_company(current.company_id)
+    shop_name = company["name"] if company else current.company_id
+    invite_link = _absolute_url(f"/auth/accept-invite?token={token}")
+    mail_result = send_email(
+        to_email=payload.email,
+        subject=f"Invitation a rejoindre {shop_name} sur QuickSellPay",
+        text=(
+            f"Bonjour,\n\n"
+            f"Vous avez ete invite(e) a rejoindre la boutique \"{shop_name}\" sur QuickSellPay "
+            f"en tant que {payload.role}.\n\n"
+            f"Cliquez sur le lien ci-dessous pour accepter l'invitation et definir votre mot de passe :\n"
+            f"{invite_link}\n\n"
+            f"Ce lien expire dans {cfg.INVITE_TOKEN_EXPIRE_HOURS} heures.\n\n"
+            f"Si vous ne connaissez pas cette boutique, ignorez ce message.\n\n"
+            f"L'equipe QuickSellPay"
+        ),
+        html=(
+            f"<p>Bonjour,</p>"
+            f"<p>Vous avez ete invite(e) a rejoindre la boutique <strong>{shop_name}</strong> sur QuickSellPay "
+            f"en tant que <em>{payload.role}</em>.</p>"
+            f"<p><a href='{invite_link}' style='display:inline-block;padding:10px 20px;"
+            f"background:#2563eb;color:#fff;text-decoration:none;border-radius:6px;font-weight:bold;'>"
+            f"Accepter l'invitation</a></p>"
+            f"<p>Ou copiez ce lien dans votre navigateur :<br><small>{invite_link}</small></p>"
+            f"<p>Ce lien expire dans <strong>{cfg.INVITE_TOKEN_EXPIRE_HOURS} heures</strong>.</p>"
+            f"<p style='color:#888;font-size:12px;'>Si vous ne connaissez pas cette boutique, ignorez ce message.</p>"
+        ),
+    )
     return {
         "invite_token": token,
-        "invite_link":  f"/auth/accept-invite?token={token}",
+        "invite_link":  invite_link,
         "email":        payload.email,
         "role":         payload.role,
         "expires_in":   f"{cfg.INVITE_TOKEN_EXPIRE_HOURS}h",
+        "email_sent":   mail_result.get("sent", False),
     }
 
 
@@ -760,6 +801,8 @@ def update_company_profile(
             "address": payload.address if payload.address is not None else company.get("address"),
             "phone": payload.phone if payload.phone is not None else company.get("phone"),
             "contact_email": payload.contact_email if payload.contact_email is not None else company.get("contact_email"),
+            "is_vat_registered": int(payload.is_vat_registered) if payload.is_vat_registered is not None else company.get("is_vat_registered", 1),
+            "mecef_token": payload.mecef_token if payload.mecef_token is not None else company.get("mecef_token"),
         },
     )
     return _branding_payload(current.company_id)
@@ -987,6 +1030,76 @@ async def stripe_webhook(request: Request):
             )
 
     return {"received": True}
+
+
+# -----------------------------------------------------------------------
+# BILLING - FEDAPAY  (MTN Mobile Money, Moov Money, cartes Afrique West)
+# -----------------------------------------------------------------------
+
+@app.post("/billing/fedapay/checkout", response_model=FedaPayCheckoutResponse, tags=["Billing"])
+def fedapay_checkout(
+    payload: FedaPayCheckoutRequest,
+    current: Annotated[TokenData, Depends(get_current_user)],
+):
+    """Cree une transaction FedaPay et retourne l'URL de paiement."""
+    check_subscription_active(current.company_id)
+    company = db.get_company(current.company_id)
+    customer_email = company.get("contact_email") or company.get("email") or current.email if company else current.email
+    customer_name  = company.get("name") or current.email if company else current.email
+    result = feda.create_transaction(
+        plan=payload.plan,
+        company_id=current.company_id,
+        customer_email=customer_email,
+        customer_name=customer_name,
+        callback_url=payload.success_url,
+        cancel_url=payload.cancel_url,
+    )
+    return FedaPayCheckoutResponse(**result)
+
+
+@app.post("/billing/fedapay/webhook", tags=["Billing"], include_in_schema=False)
+async def fedapay_webhook(request: Request):
+    """Webhook FedaPay : active ou desactive l'abonnement apres paiement."""
+    import json as _json
+    body_bytes = await request.body()
+    sig = request.headers.get("X-Fedapay-Signature", "")
+    if not feda.verify_webhook_signature(body_bytes, sig):
+        raise HTTPException(400, "Signature FedaPay invalide")
+    body = _json.loads(body_bytes)
+    event = feda.parse_webhook_event(body)
+    if event is None:
+        return {"received": True, "action": "ignored"}
+    evt  = event["event"]
+    cid  = event["company_id"]
+    plan = event["plan"]
+    tx_id = event["tx_id"]
+    now  = datetime.now(tz=timezone.utc).isoformat()
+    if evt == "approved":
+        end_date = feda.subscription_end_date(days=31)
+        existing = db.get_subscription(cid) or {}
+        db.upsert_subscription({
+            "id":                      existing.get("id") or str(uuid.uuid4()),
+            "company_id":              cid,
+            "plan":                    plan,
+            "status":                  "active",
+            "start_date":              existing.get("start_date") or now,
+            "end_date":                end_date,
+            "stripe_subscription_id":  f"fedapay_{tx_id}",
+            "stripe_customer_id":      existing.get("stripe_customer_id", ""),
+            "updated_at":              now,
+        })
+        return {"received": True, "action": "subscription_activated", "plan": plan}
+    if evt == "declined":
+        existing = db.get_subscription(cid) or {}
+        db.upsert_subscription({
+            **existing,
+            "company_id": cid,
+            "status":     "payment_failed",
+            "updated_at": now,
+        })
+        return {"received": True, "action": "payment_failed"}
+    return {"received": True, "action": "noop"}
+
 
 
 # ════════════════════════════════════════════════════════════════════════════

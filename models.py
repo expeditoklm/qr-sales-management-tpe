@@ -29,6 +29,8 @@ class RegisterRequest(BaseModel):
     email:        str = Field(..., min_length=5)
     password:     str = Field(..., min_length=8)
     confirm_password: str = Field(..., min_length=8)
+    is_vat_registered: bool = True
+    mecef_token: Optional[str] = Field(default=None, max_length=120)
 
     @field_validator("email", "contact_email")
     @classmethod
@@ -95,6 +97,8 @@ class TokenResponse(BaseModel):
     address: Optional[str] = None
     phone: Optional[str] = None
     contact_email: Optional[str] = None
+    is_vat_registered: bool = True
+    mecef_token: Optional[str] = None
 
 
 class RefreshRequest(BaseModel):
@@ -161,6 +165,8 @@ class CompanyBrandingOut(BaseModel):
     address: Optional[str] = None
     phone: Optional[str] = None
     contact_email: Optional[str] = None
+    is_vat_registered: bool = True
+    mecef_token: Optional[str] = None
 
 
 class CompanyProfileUpdate(BaseModel):
@@ -171,6 +177,8 @@ class CompanyProfileUpdate(BaseModel):
     address: Optional[str] = Field(default=None, max_length=255)
     phone: Optional[str] = Field(default=None, max_length=40)
     contact_email: Optional[str] = Field(default=None)
+    is_vat_registered: Optional[bool] = None
+    mecef_token: Optional[str] = Field(default=None, max_length=120)
 
     @field_validator("company_name", "commercial_name", "rccm", "ifu", "address", "phone", mode="before")
     @classmethod
@@ -260,6 +268,27 @@ class CreateCheckoutRequest(BaseModel):
         if v not in ("basic", "pro", "enterprise"):
             raise ValueError("Plan invalide")
         return v
+
+
+class FedaPayCheckoutRequest(BaseModel):
+    plan:        str = Field(..., description="basic | pro | enterprise")
+    success_url: str = Field(..., description="URL de retour apres paiement reussi")
+    cancel_url:  str = Field(..., description="URL de retour si annulation")
+
+    @field_validator("plan")
+    @classmethod
+    def valid_plan(cls, v: str) -> str:
+        if v not in ("basic", "pro", "enterprise"):
+            raise ValueError("Plan invalide. Choisir : basic, pro ou enterprise")
+        return v
+
+
+class FedaPayCheckoutResponse(BaseModel):
+    transaction_id: str
+    payment_url:    str
+    amount:         int
+    currency:       str = "XOF"
+    plan:           str
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

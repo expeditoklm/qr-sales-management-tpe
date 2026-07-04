@@ -17,7 +17,7 @@ Backend FastAPI multi-tenant pour l'application mobile **QuickSellPay** (caisse 
 | Stockage fichiers | **S3 / Cloudflare R2** recommandé (fallback local) |
 | Monitoring | **Sentry** (erreurs + performances) |
 | Email | SMTP configurable (Brevo recommandé) |
-| Paiements | Stripe (abonnements) |
+| Paiements | **FedaPay** (MTN MoMo, Moov, cartes — West Africa) + Stripe (optionnel) |
 | Déploiement prod | cPanel + Passenger WSGI |
 | Déploiement Docker | Dockerfile inclus |
 
@@ -183,8 +183,10 @@ docker run -d \
 | Méthode | Route | Description |
 |---------|-------|-------------|
 | `GET` | `/billing/status` | Statut de l'abonnement |
-| `POST` | `/billing/create-checkout-session` | Créer une session Stripe |
-| `POST` | `/billing/webhook` | Webhook Stripe |
+| `POST` | `/billing/fedapay/checkout` | Creer un paiement FedaPay (MTN MoMo, Moov, carte) |
+| `POST` | `/billing/fedapay/webhook` | Webhook FedaPay (activation automatique) |
+| `POST` | `/billing/create-checkout-session` | Creer une session Stripe (optionnel) |
+| `POST` | `/billing/webhook` | Webhook Stripe (optionnel) |
 
 ### Super-admin — `/admin/`
 
@@ -228,10 +230,22 @@ Voir `.env.example` pour la liste complète.
 
 Le fichier `passenger_wsgi.py` est configuré pour le déploiement via **Passenger WSGI** sur cPanel. Le serveur est démarré automatiquement par cPanel — aucune commande manuelle nécessaire.
 
-Pour forcer un redémarrage :
+Pour forcer un redemarrage :
 
 ```bash
 touch tmp/restart.txt
+```
+
+Lancer avec Gunicorn (hors cPanel Passenger) :
+
+```bash
+gunicorn -c gunicorn.conf.py main:app
+```
+
+Backup quotidien (ajouter dans cPanel -> Cron Jobs) :
+
+```
+0 2 * * * /home/tunelaf/quicksellpay/venv/bin/python /home/tunelaf/quicksellpay/backup.py >> /home/tunelaf/quicksellpay/logs/backup.log 2>&1
 ```
 
 ---

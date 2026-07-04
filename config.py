@@ -147,3 +147,14 @@ class Settings:
     # Creer un projet gratuit sur https://sentry.io
     SENTRY_DSN                = _get("SENTRY_DSN", "")
     SENTRY_TRACES_SAMPLE_RATE = _get_float("SENTRY_TRACES_SAMPLE_RATE", 0.05)
+
+    # FedaPay -- passerelle paiement West Africa (MTN MoMo, Moov, cartes)
+    # Creer un compte gratuit sur https://fedapay.com
+    # FEDAPAY_ENV = sandbox (tests) ou live (production)
+    FEDAPAY_SECRET_KEY      = _get("FEDAPAY_SECRET_KEY", "")
+    FEDAPAY_WEBHOOK_SECRET  = _get("FEDAPAY_WEBHOOK_SECRET", "")
+    FEDAPAY_ENV             = _get("FEDAPAY_ENV", "sandbox")
+    # Tarifs mensuels en XOF (Franc CFA d'Afrique de l'Ouest)
+    FEDAPAY_PRICE_BASIC      = _get_int("FEDAPAY_PRICE_BASIC",      5000)
+    FEDAPAY_PRICE_PRO        = _get_int("FEDAPAY_PRICE_PRO",       15000)
+    FEDAPAY_PRICE_ENTERPRISE = _get_int("FEDAPAY_PRICE_ENTERPRISE", 30000)
