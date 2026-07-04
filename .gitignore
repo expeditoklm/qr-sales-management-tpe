@@ -1,3 +1,44 @@
+# Environnement virtuel Python
 venv/
+.venv/
+env/
+
+# Bytecode Python
 *.pyc
+*.pyo
 __pycache__/
+*.pyd
+
+# Variables d'environnement (contient les secrets)
+.env
+
+# Bases de donnees SQLite locales
+*.db
+*.sqlite
+*.sqlite3
+data/
+
+# Images uploadees localement
+static/images/
+
+# Backups
+backups/
+
+# Logs
+*.log
+logs/
+
+# IDE
+.vscode/
+.idea/
+*.suo
+*.user
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Distribution Python
+dist/
+build/
+*.egg-info/
