@@ -1,53 +1,10 @@
-<!DOCTYPE html>
-<html lang="fr">
-<head>
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>A propos - QuickSellPay</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com"/>
-  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet"/>
-  <style>
-    :root { --bg:#f4f7fb; --surface:#fff; --border:#d7e2f2; --text:#0f172a; --muted:#64748b; --accent:#1565d8; --grad:linear-gradient(135deg,#0f172a,#1565d8,#22c1c3); }
-    * { box-sizing:border-box; }
-    body { margin:0; font-family:Manrope,sans-serif; background:radial-gradient(circle at top right, rgba(21,101,216,.14), transparent 28%), var(--bg); color:var(--text); }
-    .wrap { max-width:900px; margin:0 auto; padding:32px 20px 56px; }
-    .hero, .card { background:rgba(255,255,255,.92); backdrop-filter:blur(16px); border:1px solid var(--border); border-radius:28px; box-shadow:0 20px 60px rgba(15,23,42,.08); }
-    .hero { padding:32px; margin-bottom:18px; }
-    h1, h2 { font-family:'Space Grotesk',sans-serif; margin:0 0 12px; letter-spacing:-.04em; }
-    h1 { font-size:clamp(2rem,5vw,3.3rem); }
-    h2 { font-size:1.2rem; }
-    p { line-height:1.8; color:#334155; }
-    .grid { display:grid; gap:18px; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); }
-    .card { padding:24px; }
-    .nav { display:flex; gap:12px; flex-wrap:wrap; margin-top:18px; }
-    a { color:#fff; text-decoration:none; font-weight:700; background:var(--grad); padding:10px 16px; border-radius:14px; box-shadow:0 12px 24px rgba(15,23,42,.10); }
-  </style>
-</head>
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>À propos — QuickSellPay</title><link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet"><link rel="stylesheet" href="/static/public-pages.css"></head>
 <body>
-  <div class="wrap">
-    <section class="hero">
-      <h1>QuickSellPay, une plateforme de vente et de provenance produit</h1>
-      <p>QuickSellPay aide les boutiques a vendre, suivre leurs stocks, generer des QR codes uniques et permettre au consommateur final de verifier la provenance d'un produit depuis une page publique claire et securisee.</p>
-      <div class="nav">
-        <a href="/">Retour au dashboard</a>
-        <a href="/verify">Verification publique</a>
-        <a href="/privacy">Confidentialite</a>
-      </div>
-    </section>
-    <section class="grid">
-      <article class="card">
-        <h2>Objectif</h2>
-        <p>Reduire les reutilisations frauduleuses, renforcer la confiance client et donner aux equipes commerciales un outil leger, mobile et web.</p>
-      </article>
-      <article class="card">
-        <h2>Experience</h2>
-        <p>Une boutique peut gerer ses produits, ventes et impressions de tickets depuis l'application, pendant que le web centralise pilotage, authentification et administration.</p>
-      </article>
-      <article class="card">
-        <h2>Traçabilite</h2>
-        <p>Chaque verification peut tenir compte du contexte d'usage, du consentement de localisation et des statistiques antifraude affichees a la boutique.</p>
-      </article>
-    </section>
-  </div>
-</body>
-</html>
+  <header class="site-header"><a class="brand" href="/">Quick<b>SellPay</b></a><nav class="site-nav"><a href="/">Accueil</a><a href="/verify">Vérifier un produit</a><a href="/privacy">Confidentialité</a><a class="nav-cta" href="/app">Se connecter</a></nav></header>
+  <main class="page"><section class="hero"><p class="eyebrow">À propos</p><h1>Vendre, suivre et vérifier simplement</h1><p>QuickSellPay accompagne les boutiques, commerces, supermarchés et entreprises de vente dans la gestion de leurs produits, stocks, ventes et preuves de provenance.</p></section>
+    <section class="grid"><article class="card"><h2>Gestion opérationnelle</h2><p>Produits, images, stock, ventes, équipe, exports et impressions sont réunis dans un espace web et mobile conçu pour les opérations quotidiennes.</p></article><article class="card"><h2>Traçabilité produit</h2><p>Les codes QR uniques permettent d’orienter le client vers une page de vérification. Cette fonctionnalité complète les contrôles commerciaux ; elle ne remplace pas les obligations de conformité du fabricant ou du vendeur.</p></article><article class="card"><h2>Confiance et sécurité</h2><p>La plateforme met l’accent sur les accès par rôle, la journalisation, la sauvegarde et la gestion prudente des données. Consultez notre politique de confidentialité pour connaître vos droits et les mesures appliquées.</p></article></section>
+    <section class="card"><h2>Contact et facturation responsable</h2><p>QuickSellPay est exploité par LACHILO Boladji Tchédrack Expédit, freelance basé à Akpakpa Tantô, Cotonou, Bénin. Pour toute question : <a href="mailto:supportquicksellpay.tunelaf.com">supportquicksellpay.tunelaf.com</a> ou <a href="tel:+2290152401574">+229 01 52 40 15 74</a>. QuickSellPay aide les boutiques dans leurs processus de vente. Chaque entreprise reste responsable de son cadre fiscal et de toute certification requise par la DGI. La présentation d’une facture comme normalisée dépend des conditions réglementaires effectivement satisfaites.</p></section>
+  </main>
+  <footer class="site-footer"><div class="footer-grid"><div><div class="footer-title">QuickSellPay</div><div class="footer-copy">Une solution destinée à toute activité de vente : boutique, commerce, supermarché ou entreprise.</div></div><nav class="footer-links"><a href="/privacy">Confidentialité</a><a href="/terms">CGU</a><a href="/legal">Mentions légales</a><a href="/about">À propos</a></nav></div></footer>
+</body></html>

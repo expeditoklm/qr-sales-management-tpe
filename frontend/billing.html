@@ -26,7 +26,7 @@
 
     body {
       background:
-        radial-gradient(circle at top right, rgba(21,101,216,.12), transparent 26%),
+        radial-gradient(circle at top right, rgba(20,184,166,.12), transparent 26%),
         radial-gradient(circle at bottom left, rgba(34,193,195,.09), transparent 24%),
         var(--bg);
       color: var(--text);
@@ -548,7 +548,7 @@
     <div class="auth-box">
       <h2>Connexion requise</h2>
       <p>Vous devez être connecté pour souscrire à un abonnement.</p>
-      <a class="btn-login" href="/">Se connecter</a>
+      <a class="btn-login" href="https://quicksellpay.tunelaf.com/app">Se connecter</a>
     </div>
   </div>
 
@@ -638,7 +638,7 @@
         const data = await res.json();
         currentPlan = (data.plan || 'free').toLowerCase();
         const status  = (data.status || 'inactive').toLowerCase();
-        const endDate = data.current_period_end;
+        const endDate = data.end_date || data.current_period_end;
 
         // Show banner
         const banner = document.getElementById('status-banner');
@@ -720,6 +720,10 @@
           return;
         }
 
+        sessionStorage.setItem('fedapay_pending_payment', JSON.stringify({
+          transaction_id: data.transaction_id,
+          plan,
+        }));
         // Redirect to FedaPay checkout page
         showToast('Redirection vers FedaPay…');
         setTimeout(() => { window.location.href = data.payment_url; }, 600);
@@ -733,11 +737,42 @@
     }
 
     // ── Handle return from FedaPay ────────────────────────────────────────────
-    function handleReturnFromPayment() {
+    async function handleReturnFromPayment() {
       const params = new URLSearchParams(window.location.search);
       const payment = params.get('payment');
       if (payment === 'success') {
-        showToast('Paiement recu ! Activation de votre abonnement en cours…');
+        const requestedPlan = (params.get('plan') || '').toLowerCase();
+        const pendingRaw = sessionStorage.getItem('fedapay_pending_payment');
+        const pending = pendingRaw ? JSON.parse(pendingRaw) : null;
+        let activated = false;
+        let confirmationError = '';
+        // Confirmation directe : le webhook reste un filet de sécurité.
+        for (const wait of [0, 2000, 5000]) {
+          if (wait) await new Promise(resolve => setTimeout(resolve, wait));
+          if (pending?.transaction_id && pending?.plan === requestedPlan) {
+            const confirm = await apiFetch('/billing/fedapay/confirm', {
+              method: 'POST',
+              body: JSON.stringify({ transaction_id: pending.transaction_id, plan: pending.plan }),
+            });
+            const confirmation = await confirm.json().catch(() => ({}));
+            if (confirm.ok && confirmation.activated) {
+              activated = true;
+              sessionStorage.removeItem('fedapay_pending_payment');
+              await loadStatus();
+              showToast('Plan ' + requestedPlan + ' activé avec succès.');
+              break;
+            }
+          }
+          await loadStatus();
+          if (requestedPlan && currentPlan === requestedPlan) {
+            activated = true;
+            showToast('Plan ' + requestedPlan + ' activé avec succès.');
+            break;
+          }
+        }
+        if (!activated) {
+          showToast('Paiement reçu, mais le plan attend encore la confirmation FedaPay.', true);
+        }
         // Clean URL
         window.history.replaceState({}, '', window.location.pathname);
       } else if (payment === 'cancelled') {
@@ -747,8 +782,7 @@
     }
 
     // ── Init ──────────────────────────────────────────────────────────────────
-    handleReturnFromPayment();
-    loadStatus();
+    handleReturnFromPayment().then(() => loadStatus());
   </script>
 </body>
 </html>

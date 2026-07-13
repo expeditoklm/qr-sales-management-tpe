@@ -39,7 +39,7 @@
       font-family: var(--font-body);
       min-height: 100vh;
       background:
-        radial-gradient(circle at top right, rgba(21, 101, 216, .12), transparent 26%),
+        radial-gradient(circle at top right, rgba(20, 184, 166, .12), transparent 26%),
         radial-gradient(circle at bottom left, rgba(34, 193, 195, .09), transparent 24%),
         var(--bg);
     }
@@ -101,7 +101,7 @@
     .nav-item.active {
       color: var(--accent);
       border-left-color: var(--accent);
-      background: rgba(21, 101, 216, 0.10);
+      background: rgba(20, 184, 166, 0.10);
     }
 
     .nav-icon {
@@ -748,10 +748,12 @@
       justify-content: center;
       padding: 24px;
       background:
-        radial-gradient(circle at top left, rgba(21, 101, 216, 0.14), transparent 30%),
+        radial-gradient(circle at top left, rgba(20, 184, 166, 0.14), transparent 30%),
         radial-gradient(circle at bottom right, rgba(18, 185, 129, 0.12), transparent 28%),
         rgba(244, 247, 251, 0.94);
       backdrop-filter: blur(18px);
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
     }
 
     .auth-screen.hidden {
@@ -776,7 +778,7 @@
     .auth-copy {
       padding: 42px;
       background:
-        linear-gradient(160deg, rgba(21, 101, 216, 0.08), transparent 52%),
+        linear-gradient(160deg, rgba(20, 184, 166, 0.08), transparent 52%),
         linear-gradient(180deg, rgba(18, 185, 129, 0.08), transparent 100%);
       border-right: 1px solid var(--border);
     }
@@ -819,7 +821,7 @@
     .auth-point {
       padding: 14px 16px;
       border-radius: 14px;
-      background: rgba(21, 101, 216, 0.05);
+      background: rgba(20, 184, 166, 0.05);
       border: 1px solid var(--border);
       color: #334155;
       font-size: 0.82rem;
@@ -877,8 +879,8 @@
     }
 
     .auth-form .field input:focus {
-      border-color: rgba(21, 101, 216, 0.45);
-      box-shadow: 0 0 0 3px rgba(21, 101, 216, 0.08);
+      border-color: rgba(20, 184, 166, 0.45);
+      box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.08);
     }
 
     .auth-actions {
@@ -887,19 +889,20 @@
       margin-top: 18px;
     }
 
-    .auth-inline {
-      display: flex;
-      gap: 10px;
-      align-items: center;
-      justify-content: space-between;
-      margin-top: 10px;
-      flex-wrap: wrap;
+    .auth-register-link {
+      margin: 0 0 20px;
+      color: var(--muted);
+      font-size: 0.8rem;
     }
 
-    .auth-switch {
+    .auth-register-link a {
       color: var(--accent);
-      cursor: pointer;
-      font-size: 0.78rem;
+      font-weight: 800;
+      text-decoration: none;
+    }
+
+    .auth-register-link a:hover {
+      text-decoration: underline;
     }
 
     .auth-legal {
@@ -954,7 +957,7 @@
       overflow: hidden;
       display: grid;
       place-items: center;
-      background: linear-gradient(135deg, rgba(21, 101, 216, 0.16), rgba(18, 185, 129, 0.16));
+      background: linear-gradient(135deg, rgba(20, 184, 166, 0.16), rgba(18, 185, 129, 0.16));
       color: var(--accent);
       font-family: var(--font-head);
       font-weight: 800;
@@ -985,7 +988,7 @@
       overflow: hidden;
       display: grid;
       place-items: center;
-      background: linear-gradient(135deg, rgba(21, 101, 216, 0.16), rgba(18, 185, 129, 0.16));
+      background: linear-gradient(135deg, rgba(20, 184, 166, 0.16), rgba(18, 185, 129, 0.16));
       color: var(--accent);
       font-family: var(--font-head);
       font-weight: 800;
@@ -1191,13 +1194,28 @@
     }
 
     @media (max-width: 860px) {
+      .auth-screen {
+        display: block;
+        padding: 16px;
+      }
+
       .auth-panel {
         grid-template-columns: 1fr;
+        margin: 0 auto;
       }
 
       .auth-copy {
+        order: 2;
+        padding: 28px 24px;
         border-right: 0;
-        border-bottom: 1px solid var(--border);
+        border-top: 1px solid var(--border);
+        border-bottom: 0;
+      }
+
+      .auth-form-wrap {
+        order: 1;
+        padding: 32px 24px;
+        align-items: flex-start;
       }
 
       .profile-hero {
@@ -1224,6 +1242,7 @@
 </head>
 
 <body class="auth-shell-hidden">
+  <input id="products-import-input" type="file" accept=".csv,.xlsx,.zip" class="hidden" onchange="handleProductsImport(this.files[0])" />
   <div class="auth-screen" id="auth-screen">
     <div class="auth-panel">
       <div class="auth-copy">
@@ -1244,11 +1263,7 @@
         <form class="auth-form" id="login-form">
           <h2 id="auth-title">Connexion</h2>
           <p id="auth-subtitle">Entre les identifiants de ta boutique pour ouvrir le dashboard web.</p>
-          <div class="auth-inline">
-            <span class="auth-switch" onclick="setAuthMode(authMode === 'login' ? 'register' : 'login')">
-              <span id="auth-switch-label">Créer un compte</span>
-            </span>
-          </div>
+          <p class="auth-register-link">Vous n'avez pas encore de compte ? <a href="/register">S'inscrire</a></p>
           <div class="field hidden" id="register-company-field">
             <label for="register-company">Nom de la boutique</label>
             <input id="register-company" type="text" autocomplete="organization" placeholder="Nom de la boutique" />
@@ -1387,6 +1402,7 @@
         <div class="topbar">
           <div class="page-title">Dashboard</div>
           <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+            <button class="btn btn-ghost btn-sm" type="button" onclick="downloadReportPdf('dashboard')">Télécharger PDF stock</button>
             <button class="btn btn-ghost" type="button" onclick="logout()">Déconnexion</button>
           <div class="api-badge">
             <div class="dot" id="api-status-dot"></div><span id="api-status-text">Connexion…</span>
@@ -1472,6 +1488,8 @@
             <div style="display:flex;gap:5px;align-items:center">
               <button class="btn btn-primary btn-sm" onclick="openProductModal()">＋ Nouveau</button>
               <button class="btn btn-ghost btn-sm" onclick="importProducts()" title="Importer un fichier CSV">↑ Importer</button>
+              <button class="btn btn-ghost btn-sm" onclick="downloadReportPdf('products')">Télécharger PDF</button>
+              <button id="products-bulk-delete" class="btn btn-danger btn-sm" style="display:none" onclick="deleteSelectedProducts()">Supprimer (0)</button>
               <button class="btn btn-ghost btn-sm" onclick="shareProducts()" title="Partager le catalogue">↗ Partager</button>
             </div>
           </div>
@@ -1480,6 +1498,7 @@
           <table class="table">
             <thead>
               <tr>
+                <th style="width:42px"><input id="products-select-all" type="checkbox" aria-label="Sélectionner tous les produits de cette page" onchange="toggleSelectAllProducts(this.checked)"></th>
                 <th>Nom</th>
                 <th>SKU</th>
                 <th>Prix (FCFA)</th>
@@ -1490,7 +1509,7 @@
             </thead>
             <tbody id="products-tbody">
               <tr>
-                <td colspan="6" class="loading">Chargement…</td>
+                <td colspan="7" class="loading">Chargement…</td>
               </tr>
             </tbody>
           </table>
@@ -1512,6 +1531,7 @@
               <option value="">Tous les employes</option>
             </select>
             <button class="btn btn-ghost btn-sm" onclick="toggleSalesSort()" id="sales-sort-btn" title="Trier par date">↓ Date</button>
+            <button class="btn btn-ghost btn-sm" onclick="downloadReportPdf('sales')">Télécharger PDF</button>
             <button class="btn btn-primary btn-sm" onclick="openSaleModal()">＋ Nouvelle vente</button>
           </div>
         </div>
@@ -1633,8 +1653,8 @@
               <button class="btn btn-primary" type="submit" id="invite-submit">Creer l'invitation</button>
               <div class="auth-error" id="invite-form-error"></div>
               <div class="invite-result" id="invite-result">
-                <div class="section-title" style="margin-bottom:8px">Invitation creee</div>
-                <div class="muted-note">Copiez ce lien et envoyez-le a la personne invitee.</div>
+                <div class="section-title" style="margin-bottom:8px" id="invite-result-title">Invitation créée</div>
+                <div class="muted-note" id="invite-result-message">Vérification de l’envoi e-mail…</div>
                 <div class="invite-link" id="invite-result-link"></div>
                 <button class="btn btn-ghost" type="button" onclick="copyInviteLink()">Copier le lien</button>
               </div>
@@ -1694,6 +1714,7 @@
               <tr><td colspan="5" class="loading">Chargement...</td></tr>
             </tbody>
           </table>
+          <div id="audit-pagination" class="pagination" style="padding:14px 16px"></div>
         </div>
       </div>
 
@@ -1757,6 +1778,11 @@
                   <input id="profile-contact-email" type="email" />
                 </div>
               </div>
+              <div class="field">
+                <label>Seuil d'alerte de stock faible</label>
+                <input id="profile-low-stock-threshold" type="number" min="0" max="100000" value="10" />
+                <div class="hint">Alerte lorsque le stock est inférieur ou égal à ce seuil.</div>
+              </div>
               <div class="config-box">
                 <div class="section-title" style="margin-bottom:8px">Infos recu / facture affichees</div>
                 <div class="hint">
@@ -1804,7 +1830,7 @@
       <div id="page-authenticity" style="display:none">
         <div class="topbar">
           <div class="page-title">Verification de provenance du produit</div>
-          <a href="/verify" target="_blank" class="btn btn-ghost" style="text-decoration:none">↗ Page publique</a>
+          <a href="/" target="_blank" class="btn btn-ghost" style="text-decoration:none">↗ Page publique</a>
         </div>
 
         <div class="stats-grid">
@@ -1857,7 +1883,6 @@
             <div id="auth-codes-grid" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px"></div>
             <div style="display:flex;gap:8px">
               <button class="btn btn-ghost" onclick="copyAllAuthCodes()">Copier tout</button>
-              <button class="btn btn-ghost" onclick="printAuthCodes()">Imprimer</button>
             </div>
           </div>
         </div>
@@ -2064,6 +2089,7 @@
     let sessionState = null;
     let refreshPromise = null;
     let allProducts = [];
+    let lowStockThreshold = 10;
     let allSales = [];
     let webhookLog = [];
     let lastInviteLink = '';
@@ -2215,7 +2241,8 @@
       document.getElementById('auth-subtitle').textContent = mode === 'register'
         ? "Cree ta boutique QuickSellPay puis confirme le mot de passe administrateur."
         : "Entre le matricule de ta boutique pour ouvrir le dashboard web.";
-      document.getElementById('auth-switch-label').textContent = mode === 'register'
+      const authSwitchLabel = document.getElementById('auth-switch-label');
+      if (authSwitchLabel) authSwitchLabel.textContent = mode === 'register'
         ? 'Déjà un compte ?'
         : 'Créer un compte';
       document.getElementById('register-company-field').classList.toggle('hidden', mode !== 'register');
@@ -2316,6 +2343,7 @@
         document.getElementById('profile-address').value = data.address || '';
         document.getElementById('profile-phone').value = data.phone || '';
         document.getElementById('profile-contact-email').value = data.contact_email || '';
+        document.getElementById('profile-low-stock-threshold').value = data.low_stock_threshold ?? 10;
         sessionState = {
           ...(sessionState || {}),
           company_id: data.company_id || sessionState?.company_id || '',
@@ -2327,6 +2355,7 @@
           address: data.address || '',
           phone: data.phone || '',
           contact_email: data.contact_email || '',
+          low_stock_threshold: data.low_stock_threshold ?? 10,
         };
         persistSession();
         renderSession();
@@ -2346,9 +2375,13 @@
           address: document.getElementById('profile-address').value.trim(),
           phone: document.getElementById('profile-phone').value.trim(),
           contact_email: document.getElementById('profile-contact-email').value.trim(),
+          low_stock_threshold: parseInt(document.getElementById('profile-low-stock-threshold').value, 10),
         };
         if (!payload.company_name) {
           throw new Error('Le nom de la boutique est requis');
+        }
+        if (Number.isNaN(payload.low_stock_threshold) || payload.low_stock_threshold < 0) {
+          throw new Error('Le seuil de stock doit être un nombre positif ou zéro');
         }
         await apiFetch('/auth/company-profile', {
           method: 'PATCH',
@@ -2363,6 +2396,7 @@
           address: payload.address,
           phone: payload.phone,
           contact_email: payload.contact_email,
+          low_stock_threshold: payload.low_stock_threshold,
         };
         persistSession();
         renderSession();
@@ -2646,7 +2680,8 @@
         authErr.status = 401;
         throw authErr;
       }
-      const requestHeaders = { ...authHeaders(true), ...(fetchOptions.headers || {}) };
+      const hasFormData = fetchOptions.body instanceof FormData;
+      const requestHeaders = { ...authHeaders(!hasFormData), ...(fetchOptions.headers || {}) };
       let res;
       try {
         res = await fetch(BASE_URL + path, { ...fetchOptions, headers: requestHeaders });
@@ -2675,6 +2710,7 @@
     async function loadDashboard() {
       try {
         const stats = await apiFetch('/api/stats');
+        lowStockThreshold = stats.low_stock_threshold ?? 10;
         document.getElementById('stat-revenue').textContent = fmtPrice(stats.total_revenue);
         document.getElementById('stat-sales').textContent = stats.total_sales;
         document.getElementById('stat-products').textContent = stats.total_products;
@@ -2688,7 +2724,7 @@
         <tr>
           <td>${p.name}</td>
           <td class="sku">${p.sku}</td>
-          <td><span class="badge ${p.stock < 5 ? 'low' : 'warn'}">${p.stock}</span></td>
+          <td><span class="badge ${p.stock === 0 ? 'low' : 'warn'}">${p.stock}</span></td>
           <td>${fmtPrice(p.price)}</td>
         </tr>`).join('');
         }
@@ -2728,26 +2764,76 @@
     }
 
     // ─── PRODUCTS ───────────────────────────────────────────
+    const listPageSize = 10;
+    const listPages = { products: 1, sales: 1, generatedCodes: 1, productCodes: 1, verificationLogs: 1 };
+    let productRows = [];
+    const selectedProductIds = new Set();
+    let productAuthCodes = [];
+    let verificationLogs = [];
+    let generatedAuthCodeItems = [];
+
+    function pageItems(key, items) {
+      const pageCount = Math.max(1, Math.ceil(items.length / listPageSize));
+      listPages[key] = Math.min(Math.max(1, listPages[key]), pageCount);
+      const start = (listPages[key] - 1) * listPageSize;
+      return { rows: items.slice(start, start + listPageSize), start, pageCount };
+    }
+
+    function renderPagination(key, anchorId, total) {
+      const anchor = document.getElementById(anchorId);
+      if (!anchor) return;
+      const holderId = `${key}-pagination`;
+      let holder = document.getElementById(holderId);
+      if (!holder) {
+        holder = document.createElement('div');
+        holder.id = holderId;
+        holder.style.cssText = 'display:flex;justify-content:flex-end;align-items:center;gap:8px;padding:12px 0;color:var(--muted);font-size:.76rem';
+        (anchor.closest('.section') || anchor.parentElement).appendChild(holder);
+      }
+      if (total <= listPageSize) { holder.innerHTML = ''; return; }
+      const page = listPages[key];
+      const count = Math.ceil(total / listPageSize);
+      const from = (page - 1) * listPageSize + 1;
+      const to = Math.min(page * listPageSize, total);
+      holder.innerHTML = `<span>${from}–${to} sur ${total}</span><button class="btn btn-ghost btn-sm" ${page === 1 ? 'disabled' : ''} onclick="goToListPage('${key}', ${page - 1})">← Précédent</button><button class="btn btn-ghost btn-sm" ${page === count ? 'disabled' : ''} onclick="goToListPage('${key}', ${page + 1})">Suivant →</button>`;
+    }
+
+    function goToListPage(key, page) {
+      listPages[key] = page;
+      if (key === 'products') renderProducts(productRows);
+      if (key === 'sales') renderSalesList();
+      if (key === 'generatedCodes') renderGeneratedAuthCodes();
+      if (key === 'productCodes') renderProductAuthCodes();
+      if (key === 'verificationLogs') renderVerifLogs();
+    }
+
     async function loadProducts() {
       try {
         allProducts = await apiFetch('/api/products');
-        renderProducts(allProducts);
+        productRows = allProducts;
+        listPages.products = 1;
+        renderProducts(productRows);
       } catch (e) {
-        document.getElementById('products-tbody').innerHTML = `<tr><td colspan="6" class="empty">Erreur : ${e.message}</td></tr>`;
+        document.getElementById('products-tbody').innerHTML = `<tr><td colspan="7" class="empty">Erreur : ${e.message}</td></tr>`;
       }
     }
 
     function renderProducts(products) {
       const tbody = document.getElementById('products-tbody');
-      if (products.length === 0) { tbody.innerHTML = '<tr><td colspan="6" class="empty">Aucun produit</td></tr>'; return; }
-      tbody.innerHTML = products.map(p => {
-        const status = p.stock === 0 ? 'low' : p.stock < 10 ? 'warn' : 'ok';
-        const label = p.stock === 0 ? 'Rupture' : p.stock < 10 ? 'Faible' : 'En stock';
-        const stockColor = p.stock === 0 ? 'var(--danger)' : p.stock < 10 ? 'var(--accent2)' : 'var(--accent)';
+      productRows = products;
+      const validIds = new Set(allProducts.map(product => product.id));
+      [...selectedProductIds].forEach(id => { if (!validIds.has(id)) selectedProductIds.delete(id); });
+      if (products.length === 0) { tbody.innerHTML = '<tr><td colspan="7" class="empty">Aucun produit</td></tr>'; updateProductSelectionUI(); renderPagination('products', 'products-tbody', 0); return; }
+      const page = pageItems('products', products);
+      tbody.innerHTML = page.rows.map(p => {
+        const status = p.stock === 0 ? 'low' : p.stock <= lowStockThreshold ? 'warn' : 'ok';
+        const label = p.stock === 0 ? 'Rupture' : p.stock <= lowStockThreshold ? 'Faible' : 'En stock';
+        const stockColor = p.stock === 0 ? 'var(--danger)' : p.stock <= lowStockThreshold ? 'var(--accent2)' : 'var(--accent)';
         const imgHtml = p.image_url
-          ? `<img class="prod-thumb" src="${BASE_URL + p.image_url}" alt="${escapeHtml(p.name)}">`
+          ? `<img class="prod-thumb" src="${assetUrl(p.image_url)}" alt="${escapeHtml(p.name)}">`
           : `<div class="prod-thumb-placeholder">📦</div>`;
         return `<tr>
+      <td><input type="checkbox" aria-label="Sélectionner ${escapeHtml(p.name)}" ${selectedProductIds.has(p.id) ? 'checked' : ''} onchange="toggleProductSelection('${p.id}', this.checked)"></td>
       <td>
         <div style="display:flex;align-items:center;gap:10px">
           ${imgHtml}
@@ -2769,6 +2855,38 @@
       </td>
     </tr>`;
       }).join('');
+      updateProductSelectionUI(page.rows);
+      renderPagination('products', 'products-tbody', products.length);
+    }
+
+    function toggleProductSelection(id, selected) {
+      if (selected) selectedProductIds.add(id);
+      else selectedProductIds.delete(id);
+      updateProductSelectionUI();
+    }
+
+    function toggleSelectAllProducts(selected) {
+      const page = pageItems('products', productRows);
+      page.rows.forEach(product => {
+        if (selected) selectedProductIds.add(product.id);
+        else selectedProductIds.delete(product.id);
+      });
+      renderProducts(productRows);
+    }
+
+    function updateProductSelectionUI(visibleRows) {
+      const button = document.getElementById('products-bulk-delete');
+      if (button) {
+        const count = selectedProductIds.size;
+        button.style.display = count ? 'inline-flex' : 'none';
+        button.textContent = `Supprimer (${count})`;
+      }
+      const selectAll = document.getElementById('products-select-all');
+      const rows = visibleRows || pageItems('products', productRows).rows;
+      if (selectAll) {
+        selectAll.checked = rows.length > 0 && rows.every(product => selectedProductIds.has(product.id));
+        selectAll.indeterminate = rows.some(product => selectedProductIds.has(product.id)) && !selectAll.checked;
+      }
     }
 
     function editProductById(id) {
@@ -2782,6 +2900,7 @@
       const filtered = allProducts.filter(p =>
         p.name.toLowerCase().includes(q.toLowerCase()) || (p.sku || '').toLowerCase().includes(q.toLowerCase())
       );
+      listPages.products = 1;
       renderProducts(filtered);
     }
 
@@ -2878,6 +2997,7 @@
       if (!confirm('Supprimer ce produit ?')) return;
       try {
         await apiFetch('/api/products/' + id, { method: 'DELETE' });
+        selectedProductIds.delete(id);
         toast('Produit supprimé', 'ok');
         loadProducts();
         loadDashboard();
@@ -2885,10 +3005,38 @@
     }
 
     // ─── SALES ──────────────────────────────────────────────
+    async function deleteSelectedProducts() {
+      const productIds = [...selectedProductIds];
+      if (!productIds.length) return;
+      const label = productIds.length === 1 ? 'ce produit' : `ces ${productIds.length} produits`;
+      if (!confirm(`Supprimer définitivement ${label} ? Cette action est irréversible.`)) return;
+      try {
+        let result;
+        try {
+          result = await apiFetch('/api/products/bulk-delete', {
+            method: 'POST',
+            body: JSON.stringify({ product_ids: productIds }),
+          });
+        } catch (error) {
+          // Compatibilité avec un serveur n'ayant pas encore l'endpoint groupé.
+          if (error.status !== 405 && error.status !== 404) throw error;
+          await Promise.all(productIds.map(id =>
+            apiFetch('/api/products/' + encodeURIComponent(id), { method: 'DELETE' })
+          ));
+          result = { message: `${productIds.length} produit(s) supprimé(s)` };
+        }
+        selectedProductIds.clear();
+        toast(result.message || 'Produits supprimés', 'ok');
+        await loadProducts();
+        loadDashboard();
+      } catch (e) { toast(e.message, 'err'); }
+    }
+
     let salesSortAsc = false;
 
     function toggleSalesSort() {
       salesSortAsc = !salesSortAsc;
+      listPages.sales = 1;
       const btn = document.getElementById('sales-sort-btn');
       if (btn) btn.textContent = (salesSortAsc ? '↑' : '↓') + ' Date';
       renderSalesList();
@@ -2902,6 +3050,7 @@
         const params = new URLSearchParams({ period });
         if (userFilter && canManageTeam(sessionState?.role)) params.set('user_id', userFilter);
         allSales = await apiFetch('/api/sales?' + params.toString());
+        listPages.sales = 1;
         renderSalesList();
       } catch (e) {
         document.getElementById('sales-tbody').innerHTML = `<tr><td colspan="9" class="empty">Erreur : ${e.message}</td></tr>`;
@@ -2910,13 +3059,14 @@
 
     function renderSalesList() {
       const tbody = document.getElementById('sales-tbody');
-      if (!allSales.length) { tbody.innerHTML = '<tr><td colspan="9" class="empty">Aucune vente</td></tr>'; return; }
+      if (!allSales.length) { tbody.innerHTML = '<tr><td colspan="9" class="empty">Aucune vente</td></tr>'; renderPagination('sales', 'sales-tbody', 0); return; }
       const sorted = [...allSales].sort((a, b) => {
         const da = new Date(a.created_at || 0).getTime();
         const db = new Date(b.created_at || 0).getTime();
         return salesSortAsc ? da - db : db - da;
       });
-      tbody.innerHTML = sorted.map(s => {
+      const page = pageItems('sales', sorted);
+      tbody.innerHTML = page.rows.map(s => {
         const items = s.items || [];
         const seller = s.created_by_email || 'Non renseigne';
         const sourceLabel = s.source === 'mobile' || s.source === 'webhook' ? s.source : 'dashboard';
@@ -2940,6 +3090,7 @@
         <td class="sale-date" style="vertical-align:top" rowspan="${items.length}">${fmtDate(s.created_at)}</td>` : ''}
       </tr>`).join('');
       }).join('');
+      renderPagination('sales', 'sales-tbody', sorted.length);
     }
 
     async function ensureSalesUserFilter() {
@@ -2997,11 +3148,16 @@
 
     function invitePageUrl(token) {
       const url = new URL(window.location.href);
-      url.pathname = '/';
+      url.pathname = '/app';
       url.search = '';
       url.hash = '';
       url.searchParams.set('invite_token', token);
       return url.toString();
+    }
+
+    function assetUrl(rawUrl) {
+      if (!rawUrl) return '';
+      return /^https?:\/\//i.test(rawUrl) ? rawUrl : BASE_URL + (rawUrl.startsWith('/') ? rawUrl : `/${rawUrl}`);
     }
 
     async function loadTeam() {
@@ -3063,11 +3219,15 @@
           method: 'POST',
           body: JSON.stringify({ email, role }),
         });
-        lastInviteLink = invitePageUrl(data.invite_token);
+        lastInviteLink = data.invite_link || invitePageUrl(data.invite_token);
         document.getElementById('invite-result-link').textContent = lastInviteLink;
+        document.getElementById('invite-result-title').textContent = data.email_sent ? 'Invitation transmise à Brevo' : 'Invitation créée, e-mail non envoyé';
+        document.getElementById('invite-result-message').textContent = data.email_sent
+          ? 'Brevo a accepté l’e-mail. Vérifiez son statut de livraison dans Brevo ; le lien reste disponible en secours.'
+          : (data.email_error || 'L’e-mail n’a pas pu être envoyé. Vérifiez Brevo et l’expéditeur validé.');
         result.style.display = 'block';
         document.getElementById('invite-email').value = '';
-        toast('Invitation creee', 'ok');
+        toast(data.email_sent ? 'Invitation transmise à Brevo' : 'Invitation créée : SMTP doit être configuré pour l’envoi e-mail', data.email_sent ? 'ok' : 'err');
         loadTeam();
       } catch (e) {
         errorNode.textContent = e.message || 'Invitation impossible';
@@ -3119,14 +3279,21 @@
       })[action] || action;
     }
 
-    async function loadAuditLogs() {
+    let auditPage = 1;
+    const auditPerPage = 20;
+
+    async function loadAuditLogs(page = auditPage) {
       const tbody = document.getElementById('audit-logs-tbody');
+      const pager = document.getElementById('audit-pagination');
       if (!tbody) return;
       tbody.innerHTML = '<tr><td colspan="5" class="loading">Chargement...</td></tr>';
       try {
-        const logs = await apiFetch('/auth/audit-logs?limit=100');
+        const data = await apiFetch(`/auth/audit-logs?page=${page}&per_page=${auditPerPage}`);
+        const logs = data.items || [];
+        auditPage = data.page || 1;
         if (!logs.length) {
           tbody.innerHTML = '<tr><td colspan="5" class="empty">Aucune activite tracee</td></tr>';
+          if (pager) pager.innerHTML = '';
           return;
         }
         tbody.innerHTML = logs.map((log) => {
@@ -3142,8 +3309,14 @@
             <td class="sku">${escapeHtml(details || '-')}</td>
           </tr>`;
         }).join('');
+        if (pager) {
+          pager.innerHTML = `<span>Page ${data.page} sur ${data.total_pages} — ${data.total} activité(s)</span>
+            <button class="btn btn-ghost btn-sm" ${data.page <= 1 ? 'disabled' : ''} onclick="loadAuditLogs(${data.page - 1})">← Précédent</button>
+            <button class="btn btn-ghost btn-sm" ${data.page >= data.total_pages ? 'disabled' : ''} onclick="loadAuditLogs(${data.page + 1})">Suivant →</button>`;
+        }
       } catch (e) {
         tbody.innerHTML = `<tr><td colspan="5" class="empty">${escapeHtml(e.message || 'Chargement impossible')}</td></tr>`;
+        if (pager) pager.innerHTML = '';
       }
     }
 
@@ -3240,7 +3413,31 @@
     }
 
     function importProducts() {
+      document.getElementById('products-import-input').click();
+      return;
       toast('Importation CSV — fonctionnalite bientot disponible', 'ok');
+    }
+
+    async function handleProductsImport(file) {
+      if (!file) return;
+      const input = document.getElementById('products-import-input');
+      try {
+        const form = new FormData();
+        form.append('file', file);
+        toast(`Import de ${file.name} en cours...`, 'ok');
+        const result = await apiFetch('/api/products/import', { method: 'POST', body: form });
+        const imageText = result.images_imported ? ` et ${result.images_imported} image(s)` : '';
+        toast(`${result.imported} produit(s) importe(s)${imageText}`, 'ok');
+        if (result.skipped) {
+          toast(`${result.skipped} ligne(s) ignoree(s) : ${(result.errors || []).join(' ')}`, 'err');
+        }
+        await loadProducts();
+        await loadDashboard();
+      } catch (error) {
+        toast(error.message || 'Import impossible', 'err');
+      } finally {
+        input.value = '';
+      }
     }
 
     function shareProducts() {
@@ -3250,7 +3447,76 @@
         .catch(() => toast('Impossible de copier le lien', 'err'));
     }
 
+    function printReport(title, content) {
+      const win = window.open('', '_blank');
+      if (!win) { toast('Autorisez les fenêtres pop-up pour imprimer', 'err'); return; }
+      win.document.write('<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>' + escapeHtml(title) + '</title><style>body{font-family:Arial,sans-serif;color:#17233b;margin:28px}h1{font-size:22px;margin:0 0 6px}.date{color:#667085;margin-bottom:22px}table{width:100%;border-collapse:collapse;font-size:12px}th,td{border:1px solid #d8e0ea;padding:8px;text-align:left}th{background:#edf8f7;color:#087f78}.metrics{display:flex;gap:12px;flex-wrap:wrap;margin:16px 0}.metric{border:1px solid #d8e0ea;border-radius:8px;padding:12px;min-width:145px}.metric b{display:block;font-size:19px;margin-top:4px}</style></head><body><h1>' + escapeHtml(title) + '</h1><div class="date">QuickSellPay — ' + new Date().toLocaleString('fr-FR') + '</div>' + content + '</body></html>');
+      win.document.close();
+      setTimeout(() => win.print(), 250);
+    }
+
+    function productsTable(products) {
+      if (!products.length) return '<p>Aucun produit.</p>';
+      const rows = products.map(p => {
+        const status = p.stock === 0 ? 'Rupture' : p.stock < 10 ? 'Stock faible' : 'En stock';
+        return '<tr><td>' + escapeHtml(p.name) + '</td><td>' + escapeHtml(p.sku || '-') + '</td><td>' + fmtPrice(p.price) + '</td><td>' + p.stock + '</td><td>' + status + '</td></tr>';
+      }).join('');
+      return '<table><thead><tr><th>Produit</th><th>SKU</th><th>Prix (FCFA)</th><th>Stock</th><th>Statut</th></tr></thead><tbody>' + rows + '</tbody></table>';
+    }
+
+    function printProductsReport() {
+      printReport('Liste des produits', productsTable(productRows));
+    }
+
+    function printSalesReport() {
+      const sales = [...allSales].sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+      const rows = sales.map(s => '<tr><td>' + escapeHtml(s.reference || '-') + '</td><td>' + escapeHtml((s.items || []).map(i => i.product_name || i.name || '-').join(', ')) + '</td><td>' + fmtPrice(s.total) + '</td><td>' + fmtDate(s.created_at) + '</td></tr>').join('');
+      printReport('Liste des ventes', '<table><thead><tr><th>Référence</th><th>Produit(s)</th><th>Total</th><th>Date</th></tr></thead><tbody>' + (rows || '<tr><td colspan="4">Aucune vente.</td></tr>') + '</tbody></table>');
+    }
+
+    async function printDashboardReport() {
+      try {
+        const data = await Promise.all([apiFetch('/api/stats'), apiFetch('/api/products')]);
+        const stats = data[0], products = data[1];
+        const outOfStock = products.filter(p => Number(p.stock) === 0);
+        const metrics = '<div class="metrics"><div class="metric">Chiffre d’affaires<b>' + fmtPrice(stats.total_revenue) + '</b></div><div class="metric">Ventes<b>' + stats.total_sales + '</b></div><div class="metric">Produits<b>' + stats.total_products + '</b></div><div class="metric">Alertes stock faible<b>' + stats.low_stock_count + '</b></div></div>';
+        printReport('État global du stock — ruptures', metrics + productsTable(outOfStock));
+      } catch (e) { toast(e.message || 'Impression impossible', 'err'); }
+    }
+
     // ─── AUTHENTICITE ────────────────────────────────────────────────
+    async function downloadReportPdf(kind) {
+      try {
+        let path = '/api/reports/' + kind + '.pdf';
+        const params = new URLSearchParams();
+        if (kind === 'products') {
+          const q = document.getElementById('product-search')?.value.trim();
+          if (q) params.set('q', q);
+        }
+        if (kind === 'sales') {
+          params.set('period', document.getElementById('sales-period-filter')?.value || 'all');
+          const userId = document.getElementById('sales-user-filter')?.value;
+          if (userId && canManageTeam(sessionState?.role)) params.set('user_id', userId);
+        }
+        if (params.toString()) path += '?' + params.toString();
+        const response = await fetch(BASE_URL + path, { headers: authHeaders(false) });
+        if (!response.ok) {
+          const error = await response.json().catch(() => ({}));
+          throw new Error(error.detail || 'Téléchargement PDF impossible');
+        }
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = kind + '-quicksellpay.pdf';
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+        toast('PDF téléchargé', 'ok');
+      } catch (e) { toast(e.message || 'Téléchargement PDF impossible', 'err'); }
+    }
+
     let lastAuthCodes = [];
 
     function populateAuthSelects() {
@@ -3281,11 +3547,11 @@
           method: 'POST', body: JSON.stringify({ quantity: qty })
         });
         lastAuthCodes = res.map(c => c.code);
+        generatedAuthCodeItems = res;
+        listPages.generatedCodes = 1;
         const pName = sel.options[sel.selectedIndex].text;
         toast(`${res.length} code(s) generes pour "${pName}"`, 'ok');
-        document.getElementById('auth-codes-grid').innerHTML = res.map(c =>
-          `<span style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:6px 14px;font-family:var(--font-mono);font-size:0.85rem;font-weight:500;color:var(--accent);letter-spacing:0.12em">${c.code}</span>`
-        ).join('');
+        renderGeneratedAuthCodes();
         document.getElementById('auth-gen-result').style.display = '';
         loadAuthStats();
       } catch(e) { toast(e.message, 'err'); }
@@ -3294,6 +3560,15 @@
     function copyAllAuthCodes() {
       navigator.clipboard.writeText(lastAuthCodes.join('\n'));
       toast('Codes copies', 'ok');
+    }
+
+    function renderGeneratedAuthCodes() {
+      const grid = document.getElementById('auth-codes-grid');
+      const page = pageItems('generatedCodes', generatedAuthCodeItems);
+      grid.innerHTML = page.rows.map(c =>
+        `<span style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:6px 14px;font-family:var(--font-mono);font-size:0.85rem;font-weight:500;color:var(--accent);letter-spacing:0.12em">${c.code}</span>`
+      ).join('');
+      renderPagination('generatedCodes', 'auth-codes-grid', generatedAuthCodeItems.length);
     }
 
     function printAuthCodes() {
@@ -3311,24 +3586,40 @@
       if (!pid) return;
       try {
         const res = await apiFetch(`/api/products/${pid}/codes`);
-        const tbody = document.getElementById('auth-codes-tbody');
-        if (!res.length) { tbody.innerHTML = '<tr><td colspan="5" class="empty">Aucun code</td></tr>'; return; }
-        tbody.innerHTML = res.map(c => `<tr>
+        productAuthCodes = res;
+        listPages.productCodes = 1;
+        renderProductAuthCodes();
+      } catch (e) { toast(e.message, 'err'); }
+    }
+
+    function renderProductAuthCodes() {
+      const tbody = document.getElementById('auth-codes-tbody');
+      if (!productAuthCodes.length) { tbody.innerHTML = '<tr><td colspan="5" class="empty">Aucun code</td></tr>'; renderPagination('productCodes', 'auth-codes-tbody', 0); return; }
+      const page = pageItems('productCodes', productAuthCodes);
+      tbody.innerHTML = page.rows.map(c => `<tr>
   <td style="font-family:var(--font-mono);font-size:0.85rem;font-weight:500;color:var(--accent);letter-spacing:0.12em">${c.code}</td>
   <td><span class="badge ${c.status === 'used' ? 'low' : 'ok'}">${c.status === 'used' ? 'Utilise' : 'Disponible'}</span></td>
   <td class="sku">${c.verified_at ? fmtDate(c.verified_at) : '—'}</td>
   <td class="sku">${c.latitude != null ? c.latitude.toFixed(4) : '—'}</td>
   <td class="sku">${c.longitude != null ? c.longitude.toFixed(4) : '—'}</td>
 </tr>`).join('');
-      } catch (e) { toast(e.message, 'err'); }
+      renderPagination('productCodes', 'auth-codes-tbody', productAuthCodes.length);
     }
 
     async function loadVerifLogs() {
       try {
         const logs = await apiFetch('/api/authenticity/logs');
-        const tbody = document.getElementById('auth-logs-tbody');
-        if (!logs.length) { tbody.innerHTML = '<tr><td colspan="7" class="empty">Aucune verification</td></tr>'; return; }
-        tbody.innerHTML = logs.map(l => `<tr class="${!l.is_fraud && l.is_valid ? 'verification-row-ok' : ''}">
+        verificationLogs = logs;
+        listPages.verificationLogs = 1;
+        renderVerifLogs();
+      } catch (e) { }
+    }
+
+    function renderVerifLogs() {
+      const tbody = document.getElementById('auth-logs-tbody');
+      if (!verificationLogs.length) { tbody.innerHTML = '<tr><td colspan="7" class="empty">Aucune verification</td></tr>'; renderPagination('verificationLogs', 'auth-logs-tbody', 0); return; }
+      const page = pageItems('verificationLogs', verificationLogs);
+      tbody.innerHTML = page.rows.map(l => `<tr class="${!l.is_fraud && l.is_valid ? 'verification-row-ok' : ''}">
       <td style="font-family:var(--font-mono);font-size:0.78rem;letter-spacing:0.1em">${l.code || l.auth_code || l.code_value || '—'}</td>
       <td>${l.product_name || '—'}</td>
       <td><span class="badge ${l.is_fraud ? 'low' : (l.is_valid ? 'ok' : 'warn')}">${l.is_fraud ? 'Fraude' : (l.is_valid ? '✓ Valide' : '✗ Echec')}</span></td>
@@ -3337,7 +3628,7 @@
       <td class="sku">${l.longitude != null ? l.longitude.toFixed(4) : '—'}</td>
       <td class="sku">${fmtDate(l.verified_at || l.created_at)}</td>
     </tr>`).join('');
-      } catch (e) { }
+      renderPagination('verificationLogs', 'auth-logs-tbody', verificationLogs.length);
     }
 
     // Preview image dans le modal produit
@@ -3357,8 +3648,32 @@
       }
     });
 
+    // Un select HTML natif ne peut pas contenir un champ texte. Cette enveloppe
+    // ajoute donc une recherche directement au-dessus de chaque liste déroulante.
+    function enableSearchableSelects() {
+      document.querySelectorAll('select:not([data-search-ready])').forEach((select) => {
+        select.dataset.searchReady = 'true';
+        const wrapper = document.createElement('div');
+        wrapper.style.cssText = 'display:grid;gap:5px;min-width:150px';
+        const search = document.createElement('input');
+        search.type = 'search';
+        search.placeholder = 'Rechercher dans la liste...';
+        search.setAttribute('aria-label', 'Rechercher une option');
+        search.style.cssText = 'width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid var(--border);border-radius:7px;background:var(--bg);color:var(--text);font:inherit;font-size:.78rem';
+        select.parentNode.insertBefore(wrapper, select);
+        wrapper.append(search, select);
+        search.addEventListener('input', () => {
+          const needle = search.value.trim().toLowerCase();
+          Array.from(select.options).forEach((option, index) => {
+            option.hidden = index > 0 && needle && !option.text.toLowerCase().includes(needle);
+          });
+        });
+      });
+    }
+
     // ─── INIT ────────────────────────────────────────────────────────
     document.getElementById('webhook-url').value = BASE_URL + '/api/webhook/sale';
+    enableSearchableSelects();
     document.getElementById('login-form').addEventListener('submit', login);
     document.getElementById('invite-accept-form').addEventListener('submit', acceptInvite);
     document.getElementById('team-invite-form').addEventListener('submit', inviteTeamUser);

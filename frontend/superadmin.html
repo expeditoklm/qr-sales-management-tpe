@@ -17,8 +17,8 @@
       --green: #12b981;
       --yellow: #f59e0b;
       --red: #d64545;
-      --blue: #1565d8;
-      --grad: linear-gradient(135deg, #0f172a, #1565d8, #22c1c3);
+      --blue: #0f766e;
+      --grad: linear-gradient(135deg, #0f766e, #14b8a6, #5eead4);
       --shadow: 0 18px 40px rgba(15, 23, 42, 0.08);
       --radius: 18px;
       --font-head: "Space Grotesk", sans-serif;
@@ -29,7 +29,7 @@
     body {
       margin: 0;
       background:
-        radial-gradient(circle at top right, rgba(21, 101, 216, 0.12), transparent 28%),
+        radial-gradient(circle at top right, rgba(20, 184, 166, 0.12), transparent 28%),
         radial-gradient(circle at bottom left, rgba(18, 185, 129, 0.08), transparent 24%),
         var(--bg);
       color: var(--text);
@@ -108,7 +108,7 @@
     }
 
     .btn:hover { border-color: var(--green); color: var(--green); }
-    .btn.primary { background: var(--grad); border-color: #1565d8; color: #fff; }
+    .btn.primary { background: var(--grad); border-color: #0f766e; color: #fff; }
     .btn.primary:hover { color: #fff; filter: brightness(1.07); }
     .btn.danger:hover { border-color: var(--red); color: var(--red); }
 
@@ -389,7 +389,7 @@
       <div class="guide-card">
         <h3>Production</h3>
         <div class="hint">
-          Cette console pilote les endpoints <code>/admin/*</code>. La checklist Stripe et S3 ci-contre te donne exactement quoi configurer en ligne.
+          Cette console pilote les endpoints <code>/admin/*</code>. La checklist FedaPay et stockage cloud ci-contre te donne exactement quoi configurer en ligne.
         </div>
       </div>
     </aside>
@@ -423,8 +423,8 @@
                 <th>Boutique</th>
                 <th>Entreprise</th>
                 <th>Abonnement</th>
-                <th>Stripe</th>
-                <th>Création</th>
+                <th>FedaPay</th>
+                <th>Créée le (Bénin)</th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -470,7 +470,7 @@
             <div class="hint">Endpoint mobile/webhook a exposer pour les ventes :</div>
             <ul>
               <li><code>/api/webhook/sale</code> pour recevoir les ventes caisse.</li>
-              <li><code>/billing/webhook</code> pour Stripe.</li>
+              <li><code>/billing/fedapay/webhook</code> pour FedaPay.</li>
               <li>Verifier les secrets, les firewalls et le HTTPS public.</li>
             </ul>
           </article>
@@ -548,7 +548,7 @@
     function formatDate(value) {
       if (!value) return '-';
       const date = new Date(value);
-      return Number.isNaN(date.getTime()) ? value : date.toLocaleString('fr-FR');
+      return Number.isNaN(date.getTime()) ? value : date.toLocaleString('fr-FR', { timeZone: 'Africa/Porto-Novo', timeZoneName: 'short' });
     }
 
     function formatCurrency(value) {
@@ -653,11 +653,11 @@
             <td>
               Plan: <strong>${escapeHtml(currentPlan)}</strong><br />
               Statut: ${statusBadge(company.sub_status || 'inactive')}<br />
-              <span class="hint">Début: ${escapeHtml(formatDate(company.subscription_start_date))}</span>
+              <span class="hint">Début: ${escapeHtml(formatDate(company.subscription_start_date))}</span><br />
+              <span class="hint">Expire: ${escapeHtml(formatDate(company.subscription_end_date))}</span>
             </td>
             <td>
-              <div class="hint">Sub: ${escapeHtml(company.stripe_subscription_id || '-')}</div>
-              <div class="hint">Cust: ${escapeHtml(company.stripe_customer_id || '-')}</div>
+              <div class="hint">Transaction: ${escapeHtml(company.fedapay_transaction_id || '-')}</div>
             </td>
             <td>${escapeHtml(formatDate(company.created_at))}</td>
             <td>

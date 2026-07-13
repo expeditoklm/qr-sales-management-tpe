@@ -12,7 +12,7 @@
     --bg: #f4f7fb;
     --surface: #ffffff;
     --border: #d7e2f2;
-    --accent: #1565d8;
+    --accent: #0f766e;
     --danger: #d64545;
     --warn: #f59e0b;
     --text: #0f172a;
@@ -20,11 +20,11 @@
     --mono: 'DM Mono', monospace;
     --head: 'Space Grotesk', sans-serif;
     --body: 'Manrope', sans-serif;
-    --grad: linear-gradient(135deg,#0f172a,#1565d8,#22c1c3);
+    --grad: linear-gradient(135deg,#0f766e,#14b8a6,#5eead4);
   }
   body {
     background:
-      radial-gradient(ellipse at top right, rgba(21,101,216,.10) 0%, transparent 55%),
+      radial-gradient(ellipse at top right, rgba(20,184,166,.10) 0%, transparent 55%),
       radial-gradient(ellipse at bottom left, rgba(34,193,195,.08) 0%, transparent 50%),
       var(--bg);
     color: var(--text);
@@ -53,7 +53,7 @@
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    box-shadow: 0 4px 14px rgba(21,101,216,.22);
+    box-shadow: 0 4px 14px rgba(20,184,166,.22);
   }
   .logo-mark svg { width: 18px; height: 18px; }
   .logo-text { font-size: 1rem; font-weight: 700; letter-spacing: -0.02em; font-family: var(--head); }
@@ -76,8 +76,8 @@
     gap: 6px;
     padding: 4px 10px;
     border-radius: 20px;
-    background: rgba(21,101,216,.08);
-    border: 1px solid rgba(21,101,216,.15);
+    background: rgba(20,184,166,.08);
+    border: 1px solid rgba(20,184,166,.15);
     color: var(--accent);
     font-family: var(--mono);
     font-size: 0.65rem;
@@ -90,7 +90,7 @@
   .code-wrapper { position: relative; margin-bottom: 8px; }
   #codeInput {
     width: 100%;
-    background: rgba(21,101,216,.03);
+    background: rgba(20,184,166,.03);
     border: 1.5px solid var(--border);
     border-radius: 12px;
     padding: 18px 56px 18px 20px;
@@ -106,8 +106,8 @@
   }
   #codeInput:focus {
     border-color: var(--accent);
-    background: rgba(21,101,216,.05);
-    box-shadow: 0 0 0 3px rgba(21,101,216,.1);
+    background: rgba(20,184,166,.05);
+    box-shadow: 0 0 0 3px rgba(20,184,166,.1);
   }
   #codeInput.err { border-color: var(--danger); box-shadow: 0 0 0 3px rgba(214,69,69,.1); }
   #codeInput.ok  { border-color: #16a34a; box-shadow: 0 0 0 3px rgba(22,163,74,.1); }
@@ -140,12 +140,12 @@
     align-items: center;
     justify-content: center;
     gap: 8px;
-    box-shadow: 0 8px 20px rgba(21,101,216,.22);
+    box-shadow: 0 8px 20px rgba(20,184,166,.22);
     transition: transform .15s, box-shadow .15s;
   }
   #continueBtn:hover:not(:disabled), #submitVerifyBtn:hover:not(:disabled) {
     transform: translateY(-1px);
-    box-shadow: 0 12px 28px rgba(21,101,216,.28);
+    box-shadow: 0 12px 28px rgba(20,184,166,.28);
   }
   #continueBtn:disabled, #submitVerifyBtn:disabled { opacity: .55; cursor: not-allowed; }
   .spinner {
@@ -177,7 +177,7 @@
     padding: 12px 14px;
     border: 1px solid var(--border);
     border-radius: 10px;
-    background: rgba(21,101,216,.025);
+    background: rgba(20,184,166,.025);
     font-family: var(--mono);
     font-size: 0.72rem;
     line-height: 1.7;
@@ -283,7 +283,7 @@
     display: grid;
     place-items: center;
     flex-shrink: 0;
-    box-shadow: 0 6px 18px rgba(21,101,216,.25);
+    box-shadow: 0 6px 18px rgba(20,184,166,.25);
   }
   .intro-modal h1 {
     font-size: 1.5rem;
@@ -324,6 +324,8 @@
     border-top: 1px solid var(--border);
     margin-top: 8px;
   }
+  footer a { color: var(--accent); text-decoration: none; }
+  footer a:hover { text-decoration: underline; }
   .result-card {
     border-radius: 14px;
     overflow: hidden;
@@ -495,7 +497,7 @@
   <button class="try-again" onclick="resetForm()">↩ Vérifier un autre code</button>
 </div>
 
-<footer>© QuickSellPay — Système d'authenticité · Données anonymisées · Mentions légales · Politique d'utilisation · Politique de confidentialité</footer>
+<footer>© QuickSellPay — Système d'authenticité · <a href="/legal">Mentions légales</a> · <a href="/terms">CGU</a> · <a href="/privacy">Confidentialité</a> · <a href="/about">À propos</a></footer>
 
 <script>
 const ERP_BASE = (location.origin.startsWith('file') || location.origin === 'null')

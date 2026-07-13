@@ -60,6 +60,19 @@ class RegisterRequest(BaseModel):
         return v
 
 
+class BulkDeleteProductsRequest(BaseModel):
+    """Liste bornée d'identifiants à supprimer dans la boutique courante."""
+    product_ids: List[str] = Field(..., min_length=1, max_length=100)
+
+    @field_validator("product_ids")
+    @classmethod
+    def validate_product_ids(cls, values: List[str]) -> List[str]:
+        cleaned = list(dict.fromkeys(value.strip() for value in values if value.strip()))
+        if not cleaned:
+            raise ValueError("Sélectionnez au moins un produit")
+        return cleaned
+
+
 class LoginRequest(BaseModel):
     identifier: Optional[str] = None
     email: Optional[str] = None
@@ -167,6 +180,7 @@ class CompanyBrandingOut(BaseModel):
     contact_email: Optional[str] = None
     is_vat_registered: bool = True
     mecef_token: Optional[str] = None
+    low_stock_threshold: int = 10
 
 
 class CompanyProfileUpdate(BaseModel):
@@ -179,6 +193,7 @@ class CompanyProfileUpdate(BaseModel):
     contact_email: Optional[str] = Field(default=None)
     is_vat_registered: Optional[bool] = None
     mecef_token: Optional[str] = Field(default=None, max_length=120)
+    low_stock_threshold: Optional[int] = Field(default=None, ge=0, le=100000)
 
     @field_validator("company_name", "commercial_name", "rccm", "ifu", "address", "phone", mode="before")
     @classmethod
@@ -289,6 +304,18 @@ class FedaPayCheckoutResponse(BaseModel):
     amount:         int
     currency:       str = "XOF"
     plan:           str
+
+
+class FedaPayConfirmRequest(BaseModel):
+    transaction_id: str = Field(..., min_length=1, max_length=100)
+    plan: str = Field(..., description="basic | pro | enterprise")
+
+    @field_validator("plan")
+    @classmethod
+    def valid_plan(cls, v: str) -> str:
+        if v not in ("basic", "pro", "enterprise"):
+            raise ValueError("Plan invalide")
+        return v
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -466,8 +493,8 @@ class CompanyOut(BaseModel):
     sub_status:  Optional[str] = None
     subscription_start_date: Optional[str] = None
     subscription_end_date: Optional[str] = None
-    stripe_subscription_id: Optional[str] = None
-    stripe_customer_id: Optional[str] = None
+    fedapay_transaction_id: Optional[str] = None
+    payment_customer_id: Optional[str] = None
     commercial_name: Optional[str] = None
     rccm: Optional[str] = None
     ifu: Optional[str] = None

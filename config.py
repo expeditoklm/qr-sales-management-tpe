@@ -8,7 +8,9 @@ from functools import lru_cache
 _env_file = Path(__file__).parent / ".env"
 _base_dir = Path(__file__).parent
 if _env_file.exists():
-    for line in _env_file.read_text().splitlines():
+    # Le fichier .env est partage entre Windows et les hebergeurs Linux :
+    # utiliser explicitement UTF-8 au lieu de l'encodage local Windows (cp1252).
+    for line in _env_file.read_text(encoding="utf-8-sig").splitlines():
         line = line.strip()
         if line and not line.startswith("#") and "=" in line:
             key, _, val = line.partition("=")
@@ -72,15 +74,6 @@ class Settings:
     RATE_LIMIT_VERIFY_WINDOW   = _get_int("RATE_LIMIT_VERIFY_WINDOW", 60)
     RATE_LIMIT_LOGIN_REQUESTS  = _get_int("RATE_LIMIT_LOGIN_REQUESTS", 5)
     RATE_LIMIT_LOGIN_WINDOW    = _get_int("RATE_LIMIT_LOGIN_WINDOW", 60)
-
-    # Stripe
-    STRIPE_SECRET_KEY     = _get("STRIPE_SECRET_KEY", "")
-    STRIPE_WEBHOOK_SECRET = _get("STRIPE_WEBHOOK_SECRET", "")
-    STRIPE_PRICES = {
-        "basic":      _get("STRIPE_PRICE_BASIC", ""),
-        "pro":        _get("STRIPE_PRICE_PRO", ""),
-        "enterprise": _get("STRIPE_PRICE_ENTERPRISE", ""),
-    }
 
     # Plans et quotas
     PLAN_LIMITS = {

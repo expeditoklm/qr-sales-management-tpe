@@ -6,7 +6,8 @@ httpx==0.28.0
 PyJWT==2.10.1
 bcrypt==4.2.1
 boto3==1.35.24
-stripe==11.3.0
 PyMySQL==1.1.1
+cryptography>=42.0.0
 redis>=5.0.0
 sentry-sdk[fastapi]>=2.0.0
+reportlab>=4.2.0

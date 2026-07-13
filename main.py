@@ -14,10 +14,12 @@ Nouveautés v4 :
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 """
 
-import uuid, random, string, httpx, secrets, re
+import uuid, random, string, httpx, secrets, re, csv, io, zipfile
 from datetime import datetime, timezone, timedelta
+from io import BytesIO
 from pathlib import Path
 from typing import Annotated, List
+from xml.etree import ElementTree as ET
 
 # ─── Sentry — monitoring des erreurs (configurer SENTRY_DSN dans .env) ───────
 try:
@@ -33,7 +35,7 @@ from fastapi import (
     UploadFile, File, status, Query
 )
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.responses import HTMLResponse, FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from config import get_settings
@@ -108,6 +110,24 @@ def _generate_company_secret_key() -> str:
     return secrets.token_urlsafe(32)
 
 
+def _is_vat_registered(value) -> bool:
+    """Interprète sans ambiguïté le régime TVA issu de MySQL/SQLite."""
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "oui", "on"}
+    return bool(value)
+
+
+def _public_asset_url(value: str | None) -> str | None:
+    """Remplace uniquement l'ancien domaine CDN de démonstration."""
+    if not value:
+        return value
+    legacy_public_base = "https://cdn.quicksellpay.com/"
+    public_base = (cfg.STORAGE_PUBLIC_BASE_URL or "").rstrip("/") + "/"
+    if public_base != "/" and value.startswith(legacy_public_base):
+        return public_base + value[len(legacy_public_base):]
+    return value
+
+
 def _ensure_company_secret(company_id: str) -> str:
     company = db.get_company(company_id)
     if not company:
@@ -129,7 +149,7 @@ def _token_response_for_user(user: dict, company: dict | None = None) -> TokenRe
         user_id=user["id"],
         company_id=user["company_id"],
         company_name=company["name"] if company else "",
-        company_logo_url=company.get("logo_url") if company else None,
+        company_logo_url=_public_asset_url(company.get("logo_url")) if company else None,
         secret_key=secret_key,
         role=user["role"],
         plan=db.get_active_plan(user["company_id"]),
@@ -139,8 +159,9 @@ def _token_response_for_user(user: dict, company: dict | None = None) -> TokenRe
         address=company.get("address") if company else None,
         phone=company.get("phone") if company else None,
         contact_email=company.get("contact_email") if company else None,
-        is_vat_registered=bool(company.get("is_vat_registered", True)) if company else True,
+        is_vat_registered=_is_vat_registered(company.get("is_vat_registered", True)) if company else True,
         mecef_token=company.get("mecef_token") if company else None,
+        low_stock_threshold=int(company.get("low_stock_threshold") or 10) if company else 10,
     )
 
 
@@ -151,15 +172,16 @@ def _branding_payload(company_id: str) -> CompanyBrandingOut:
     return CompanyBrandingOut(
         company_id=company["id"],
         company_name=company["name"],
-        company_logo_url=company.get("logo_url"),
+        company_logo_url=_public_asset_url(company.get("logo_url")),
         commercial_name=company.get("commercial_name"),
         rccm=company.get("rccm"),
         ifu=company.get("ifu"),
         address=company.get("address"),
         phone=company.get("phone"),
         contact_email=company.get("contact_email"),
-        is_vat_registered=bool(company.get("is_vat_registered", True)),
+        is_vat_registered=_is_vat_registered(company.get("is_vat_registered", True)),
         mecef_token=company.get("mecef_token"),
+        low_stock_threshold=int(company.get("low_stock_threshold") or 10),
     )
 
 
@@ -280,6 +302,12 @@ def page_dashboard():
     return HTMLResponse((FRONTEND_DIR / "index.html").read_text(encoding="utf-8"))
 
 
+@app.get("/register",      response_class=HTMLResponse, include_in_schema=False)
+@app.get("/register.html", response_class=HTMLResponse, include_in_schema=False)
+def page_register():
+    return HTMLResponse((FRONTEND_DIR / "register.html").read_text(encoding="utf-8"))
+
+
 @app.get("/download/apk", include_in_schema=False)
 def download_apk(arch: str = "arm64"):
     arch_map = {
@@ -290,7 +318,17 @@ def download_apk(arch: str = "arm64"):
     filename = arch_map.get(arch, "QuickSellPay.apk")
     apk_path = STATIC_DIR / "downloads" / filename
     if not apk_path.exists():
-        raise HTTPException(404, "APK non disponible — revenez bientot")
+        # Un lien public ne doit jamais afficher le JSON brut de FastAPI.
+        return HTMLResponse(
+            """<!doctype html><html lang='fr'><meta charset='utf-8'>
+            <title>APK momentanément indisponible</title>
+            <body style='font-family:Arial,sans-serif;max-width:560px;margin:12vh auto;padding:28px;color:#0f172a'>
+              <h1>APK momentanément indisponible</h1>
+              <p>La nouvelle version est en cours de publication. Réessayez dans quelques instants.</p>
+              <a href='/' style='color:#009b8d'>Retour à QuickSellPay</a>
+            </body></html>""",
+            status_code=503,
+        )
     return FileResponse(
         apk_path,
         media_type="application/vnd.android.package-archive",
@@ -403,6 +441,8 @@ DEMO_COMPANY = {
     "address": "Zone Demo, Porto-Novo",
     "phone": "+22900000000",
     "contact_email": "contact@demo.tpe-qr.com",
+    "is_vat_registered": 1,
+    "mecef_token": None,
 }
 
 DEMO_USERS = [
@@ -450,18 +490,8 @@ def _ensure_demo_seed():
             "created_at":    now,
         })
 
-    print("[AUTH] Demo company prête :")
-    print(f"        company_id={DEMO_COMPANY['id']}")
-    print(f"        secret_key={secret_key}")
-    for demo_user in DEMO_USERS:
-        print(
-            f"        {demo_user['label']}: "
-            f"{demo_user['email']} / {demo_user['password']}"
-        )
-    print(
-        "        superadmin: "
-        f"{cfg.SUPERADMIN_EMAIL} / {cfg.SUPERADMIN_PASSWORD}"
-    )
+    # Ne jamais écrire des mots de passe ou clés API dans les logs.
+    print(f"[AUTH] Demo company ready: {DEMO_COMPANY['id']}")
 
 
 _ensure_demo_seed()
@@ -539,6 +569,8 @@ def register(payload: RegisterRequest):
         "address": payload.address,
         "phone": payload.phone,
         "contact_email": payload.contact_email,
+        "is_vat_registered": int(payload.is_vat_registered),
+        "mecef_token": payload.mecef_token,
     })
 
 
@@ -696,7 +728,9 @@ def invite_user(
     )
     company   = db.get_company(current.company_id)
     shop_name = company["name"] if company else current.company_id
-    invite_link = _absolute_url(f"/auth/accept-invite?token={token}")
+    # /app contient le formulaire d'acceptation de l'invitation. La landing
+    # page (/) ne le contient pas et ne doit pas recevoir ce lien.
+    invite_link = _absolute_url(f"/app?invite_token={token}")
     mail_result = send_email(
         to_email=payload.email,
         subject=f"Invitation a rejoindre {shop_name} sur QuickSellPay",
@@ -729,6 +763,9 @@ def invite_user(
         "role":         payload.role,
         "expires_in":   f"{cfg.INVITE_TOKEN_EXPIRE_HOURS}h",
         "email_sent":   mail_result.get("sent", False),
+        "email_error":  None if mail_result.get("sent") else (
+            "Brevo n'a pas accepté l'envoi. Vérifiez l'expéditeur validé dans Brevo et les journaux du serveur."
+        ),
     }
 
 
@@ -827,6 +864,7 @@ def update_company_profile(
             "contact_email": payload.contact_email if payload.contact_email is not None else company.get("contact_email"),
             "is_vat_registered": int(payload.is_vat_registered) if payload.is_vat_registered is not None else company.get("is_vat_registered", 1),
             "mecef_token": payload.mecef_token if payload.mecef_token is not None else company.get("mecef_token"),
+            "low_stock_threshold": payload.low_stock_threshold if payload.low_stock_threshold is not None else company.get("low_stock_threshold", 10),
         },
     )
     return _branding_payload(current.company_id)
@@ -884,13 +922,20 @@ def activate_user(
     )
     return {"message": "Utilisateur activé"}
 
-@app.get("/auth/audit-logs", response_model=List[AuditLog], tags=["Auth"])
+@app.get("/auth/audit-logs", tags=["Auth"])
 def audit_logs(
     current: Annotated[TokenData, Depends(get_admin_user)],
     user_id: Optional[str] = Query(default=None),
-    limit: int = Query(default=100, ge=1, le=500),
+    page: Optional[int] = Query(default=None, ge=1),
+    per_page: int = Query(default=20, ge=1, le=100),
+    limit: Optional[int] = Query(default=None, ge=1, le=500),
 ):
-    return db.list_audit_logs(current.company_id, user_id=user_id, limit=limit)
+    # Compatibilité avec les anciens clients : sans page, le tableau reste une liste.
+    if page is None:
+        return db.list_audit_logs(current.company_id, user_id=user_id, limit=limit or 100)
+    items, total = db.page_audit_logs(current.company_id, user_id=user_id, page=page, per_page=per_page)
+    return {"items": items, "page": page, "per_page": per_page, "total": total,
+            "total_pages": max(1, (total + per_page - 1) // per_page)}
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -902,158 +947,21 @@ def billing_status(current: Annotated[TokenData, Depends(get_current_user)]):
     sub  = db.get_subscription(current.company_id)
     plan = db.get_active_plan(current.company_id)
     limits = cfg.PLAN_LIMITS.get(plan, cfg.PLAN_LIMITS["free"])
+    end_date = sub["end_date"] if sub else None
+    # Compatibilité des anciens abonnements créés avant l'ajout de l'échéance.
+    if sub and not end_date and sub.get("plan") != "free" and sub.get("start_date"):
+        try:
+            end_date = (datetime.fromisoformat(sub["start_date"]) + timedelta(days=31)).isoformat()
+        except (TypeError, ValueError):
+            end_date = None
     return SubscriptionStatus(
         company_id=current.company_id,
         plan=plan,
         status=sub["status"] if sub else "active",
         start_date=sub["start_date"] if sub else None,
-        end_date=sub["end_date"] if sub else None,
+        end_date=end_date,
         limits=limits,
     )
-
-
-def _stripe_price_to_plan_map() -> dict[str, str]:
-    return {
-        price_id: plan
-        for plan, price_id in cfg.STRIPE_PRICES.items()
-        if price_id
-    }
-
-
-def _stripe_plan_from_price_id(price_id: str | None) -> str | None:
-    if not price_id:
-        return None
-    return _stripe_price_to_plan_map().get(price_id)
-
-
-def _stripe_plan_from_subscription_object(obj: dict) -> str | None:
-    items = ((obj.get("items") or {}).get("data") or [])
-    for item in items:
-        price = item.get("price") or {}
-        plan = _stripe_plan_from_price_id(price.get("id"))
-        if plan:
-            return plan
-    return None
-
-
-@app.post("/billing/create-checkout-session", tags=["Billing"])
-def create_checkout(
-    payload: CreateCheckoutRequest,
-    current: Annotated[TokenData, Depends(get_admin_user)],
-):
-    """Crée une session Stripe Checkout (nécessite STRIPE_SECRET_KEY dans .env)."""
-    if not cfg.STRIPE_SECRET_KEY:
-        raise HTTPException(501, "Stripe non configuré — ajoutez STRIPE_SECRET_KEY dans .env")
-    price_id = cfg.STRIPE_PRICES.get(payload.plan, "")
-    if not price_id:
-        raise HTTPException(501, f"Prix Stripe non configuré pour le plan '{payload.plan}'")
-
-    try:
-        import stripe
-        stripe.api_key = cfg.STRIPE_SECRET_KEY
-        session = stripe.checkout.Session.create(
-            payment_method_types=["card"],
-            mode="subscription",
-            line_items=[{"price": price_id, "quantity": 1}],
-            success_url=payload.success_url + "?session_id={CHECKOUT_SESSION_ID}",
-            cancel_url=payload.cancel_url,
-            metadata={"company_id": current.company_id, "plan": payload.plan},
-        )
-        return {"url": session.url, "session_id": session.id}
-    except ImportError:
-        raise HTTPException(501, "Package stripe non installé — pip install stripe")
-    except Exception as e:
-        raise HTTPException(500, f"Erreur Stripe: {e}")
-
-
-@app.post("/billing/webhook", tags=["Billing"], include_in_schema=False)
-async def stripe_webhook(request: Request):
-    """Reçoit les événements Stripe (paiement, annulation…)."""
-    if not cfg.STRIPE_WEBHOOK_SECRET:
-        raise HTTPException(501, "Stripe webhook non configuré")
-    try:
-        import stripe
-        stripe.api_key = cfg.STRIPE_SECRET_KEY
-        body      = await request.body()
-        sig       = request.headers.get("stripe-signature", "")
-        event     = stripe.Webhook.construct_event(body, sig, cfg.STRIPE_WEBHOOK_SECRET)
-    except Exception as e:
-        raise HTTPException(400, f"Webhook invalide: {e}")
-
-    now = datetime.now(tz=timezone.utc).isoformat()
-    ev_type = event["type"]
-    obj     = event["data"]["object"]
-
-    if ev_type == "checkout.session.completed":
-        company_id   = obj["metadata"].get("company_id")
-        sub_id       = obj.get("subscription")
-        customer_id  = obj.get("customer")
-        plan         = obj.get("metadata", {}).get("plan")
-        if not plan and obj.get("id"):
-            try:
-                line_items = stripe.checkout.Session.list_line_items(obj["id"], limit=10)
-                for item in line_items.get("data", []):
-                    price = item.get("price") or {}
-                    plan = _stripe_plan_from_price_id(price.get("id"))
-                    if plan:
-                        break
-            except Exception:
-                plan = None
-        if not plan:
-            plan = "basic"
-        if company_id:
-            db.upsert_subscription({
-                "id":                     str(uuid.uuid4()),
-                "company_id":             company_id,
-                "plan":                   "basic",  # à affiner via price_id
-                "status":                 "active",
-                "start_date":             now,
-                "end_date":               None,
-                "stripe_subscription_id": sub_id,
-                "stripe_customer_id":     customer_id,
-                "updated_at":             now,
-            })
-            if plan != "basic":
-                sub = db.get_subscription(company_id)
-                if sub:
-                    db.upsert_subscription({
-                        "id":                     sub["id"],
-                        "company_id":             company_id,
-                        "plan":                   plan,
-                        "status":                 sub["status"],
-                        "start_date":             sub["start_date"],
-                        "end_date":               sub["end_date"],
-                        "stripe_subscription_id": sub["stripe_subscription_id"],
-                        "stripe_customer_id":     sub["stripe_customer_id"],
-                        "updated_at":             now,
-                    })
-
-    elif ev_type in ("customer.subscription.updated",):
-        sub_id = obj["id"]
-        status_stripe = obj["status"]  # active, past_due, canceled…
-        with db._shared_conn() as conn:
-            conn.execute(
-                "UPDATE subscriptions SET status=?, updated_at=? WHERE stripe_subscription_id=?",
-                (status_stripe, now, sub_id)
-            )
-        plan = _stripe_plan_from_subscription_object(obj)
-        if plan:
-            with db._shared_conn() as conn:
-                conn.execute(
-                    "UPDATE subscriptions SET plan=?, updated_at=? WHERE stripe_subscription_id=?",
-                    (plan, now, sub_id)
-                )
-
-    elif ev_type == "customer.subscription.deleted":
-        sub_id = obj["id"]
-        with db._shared_conn() as conn:
-            conn.execute(
-                "UPDATE subscriptions SET status='canceled', end_date=?, updated_at=? "
-                "WHERE stripe_subscription_id=?",
-                (now, now, sub_id)
-            )
-
-    return {"received": True}
 
 
 # -----------------------------------------------------------------------
@@ -1081,6 +989,43 @@ def fedapay_checkout(
     return FedaPayCheckoutResponse(**result)
 
 
+def _activate_fedapay_subscription(company_id: str, plan: str, transaction_id: str) -> dict:
+    now = datetime.now(tz=timezone.utc).isoformat()
+    end_date = feda.subscription_end_date(days=31)
+    existing = db.get_subscription(company_id) or {}
+    db.upsert_subscription({
+        "id":                      existing.get("id") or str(uuid.uuid4()),
+        "company_id":              company_id,
+        "plan":                    plan,
+        "status":                  "active",
+        "start_date":              now,
+        "end_date":                end_date,
+        "stripe_subscription_id":  f"fedapay_{transaction_id}",
+        "stripe_customer_id":      existing.get("stripe_customer_id", ""),
+        "updated_at":              now,
+    })
+    return {"plan": plan, "end_date": end_date}
+
+
+@app.post("/billing/fedapay/confirm", tags=["Billing"])
+def fedapay_confirm(
+    payload: FedaPayConfirmRequest,
+    current: Annotated[TokenData, Depends(get_current_user)],
+):
+    """Confirmation active au retour du navigateur, en complément du webhook."""
+    transaction = feda.get_transaction(payload.transaction_id)
+    metadata = transaction.get("custom_metadata") or transaction.get("metadata") or {}
+    company_id = str(metadata.get("company_id") or "")
+    plan = str(metadata.get("plan") or "")
+    status_value = str(transaction.get("status") or "").lower()
+    if company_id != current.company_id or plan != payload.plan:
+        raise HTTPException(403, "Cette transaction ne correspond pas à votre boutique ou à ce plan.")
+    if status_value not in ("approved", "success"):
+        return {"activated": False, "status": status_value or "pending"}
+    subscription = _activate_fedapay_subscription(current.company_id, plan, payload.transaction_id)
+    return {"activated": True, "status": status_value, **subscription}
+
+
 @app.post("/billing/fedapay/webhook", tags=["Billing"], include_in_schema=False)
 async def fedapay_webhook(request: Request):
     """Webhook FedaPay : active ou desactive l'abonnement apres paiement."""
@@ -1097,29 +1042,16 @@ async def fedapay_webhook(request: Request):
     cid  = event["company_id"]
     plan = event["plan"]
     tx_id = event["tx_id"]
-    now  = datetime.now(tz=timezone.utc).isoformat()
     if evt == "approved":
-        end_date = feda.subscription_end_date(days=31)
-        existing = db.get_subscription(cid) or {}
-        db.upsert_subscription({
-            "id":                      existing.get("id") or str(uuid.uuid4()),
-            "company_id":              cid,
-            "plan":                    plan,
-            "status":                  "active",
-            "start_date":              existing.get("start_date") or now,
-            "end_date":                end_date,
-            "stripe_subscription_id":  f"fedapay_{tx_id}",
-            "stripe_customer_id":      existing.get("stripe_customer_id", ""),
-            "updated_at":              now,
-        })
-        return {"received": True, "action": "subscription_activated", "plan": plan}
+        subscription = _activate_fedapay_subscription(cid, plan, tx_id)
+        return {"received": True, "action": "subscription_activated", **subscription}
     if evt == "declined":
         existing = db.get_subscription(cid) or {}
         db.upsert_subscription({
             **existing,
             "company_id": cid,
             "status":     "payment_failed",
-            "updated_at": now,
+            "updated_at": datetime.now(tz=timezone.utc).isoformat(),
         })
         return {"received": True, "action": "payment_failed"}
     return {"received": True, "action": "noop"}
@@ -1170,13 +1102,14 @@ def admin_set_plan(
     if not db.get_company(company_id):
         raise HTTPException(404, "Boutique introuvable")
     now = datetime.now(tz=timezone.utc).isoformat()
+    end_date = None if plan == "free" else (datetime.now(tz=timezone.utc) + timedelta(days=31)).isoformat()
     db.upsert_subscription({
         "id":                     str(uuid.uuid4()),
         "company_id":             company_id,
         "plan":                   plan,
         "status":                 "active",
         "start_date":             now,
-        "end_date":               None,
+        "end_date":               end_date,
         "stripe_subscription_id": None,
         "stripe_customer_id":     None,
         "updated_at":             now,
@@ -1250,6 +1183,10 @@ def admin_reset_company_password(
 
 def _enrich(p: dict, company_id: str) -> dict:
     """Ajoute company_id au dict pour compatibilité Flutter."""
+    # Corrige les URLs créées avant la configuration de l'URL publique R2.
+    # Les données restent lisibles sans migration manuelle de MySQL.
+    p["image_url"] = _public_asset_url(p.get("image_url"))
+    p["reference_image_url"] = _public_asset_url(p.get("reference_image_url"))
     p["company_id"] = company_id
     return p
 
@@ -1285,11 +1222,165 @@ def _audit(
     })
 
 
-@app.get("/api/products", response_model=List[Product], tags=["Produits"])
+def _csv_import_rows(raw: bytes) -> list[dict]:
+    text = raw.decode("utf-8-sig", errors="replace")
+    return list(csv.DictReader(io.StringIO(text)))
+
+
+def _xlsx_import_rows(raw: bytes) -> list[dict]:
+    """Lit la premiere feuille d'un fichier XLSX sans dependance externe."""
+    ns = {"x": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+    with zipfile.ZipFile(io.BytesIO(raw)) as book:
+        shared = []
+        if "xl/sharedStrings.xml" in book.namelist():
+            shared_root = ET.fromstring(book.read("xl/sharedStrings.xml"))
+            shared = ["".join(node.itertext()) for node in shared_root.findall("x:si", ns)]
+        sheets = sorted(name for name in book.namelist()
+                        if name.startswith("xl/worksheets/") and name.endswith(".xml"))
+        if not sheets:
+            raise ValueError("Feuille Excel introuvable")
+        root = ET.fromstring(book.read(sheets[0]))
+        rows = []
+        for row in root.findall(".//x:sheetData/x:row", ns):
+            values = []
+            for cell in row.findall("x:c", ns):
+                cell_type = cell.get("t")
+                value = cell.findtext("x:v", default="", namespaces=ns)
+                if cell_type == "s" and value.isdigit():
+                    value = shared[int(value)]
+                elif cell_type == "inlineStr":
+                    value = "".join(cell.find("x:is", ns).itertext()) if cell.find("x:is", ns) is not None else ""
+                values.append(value)
+            if any(str(value).strip() for value in values):
+                rows.append(values)
+    if not rows:
+        return []
+    headers = [str(value).strip().lower() for value in rows[0]]
+    return [
+        {headers[index]: str(value).strip() for index, value in enumerate(row) if index < len(headers)}
+        for row in rows[1:]
+    ]
+
+
+class _ArchiveImageUpload:
+    def __init__(self, filename: str, content: bytes):
+        self.filename = filename
+        self.file = io.BytesIO(content)
+
+
+@app.post("/api/products/import", tags=["Produits"])
+async def import_products_file(
+    current: Annotated[TokenData, Depends(get_current_user)],
+    file: UploadFile = File(...),
+):
+    """Importe CSV, XLSX, ou ZIP (produits.xlsx + images/)."""
+    check_subscription_active(current.company_id)
+    filename = (file.filename or "").lower()
+    if not filename.endswith((".csv", ".xlsx", ".zip")):
+        raise HTTPException(415, "Utilisez un fichier CSV, XLSX ou ZIP.")
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(400, "Le fichier est vide.")
+    if len(raw) > 30 * 1024 * 1024:
+        raise HTTPException(413, "Le fichier ne doit pas depasser 30 Mo.")
+
+    image_files: dict[str, tuple[str, bytes]] = {}
+    try:
+        if filename.endswith(".zip"):
+            with zipfile.ZipFile(io.BytesIO(raw)) as bundle:
+                entries = [entry for entry in bundle.infolist() if not entry.is_dir()]
+                table = next(
+                    (entry for entry in entries
+                     if entry.filename.replace("\\", "/").lower() in {"produits.csv", "produits.xlsx"}),
+                    None,
+                )
+                if table is None:
+                    raise ValueError("Le ZIP doit contenir produits.csv ou produits.xlsx a sa racine.")
+                table_bytes = bundle.read(table)
+                for entry in entries:
+                    normalized = entry.filename.replace("\\", "/")
+                    if normalized.lower().startswith("images/"):
+                        image_files[Path(normalized).name.lower()] = (Path(normalized).name, bundle.read(entry))
+                rows = _xlsx_import_rows(table_bytes) if table.filename.lower().endswith(".xlsx") else _csv_import_rows(table_bytes)
+        else:
+            rows = _xlsx_import_rows(raw) if filename.endswith(".xlsx") else _csv_import_rows(raw)
+    except (ValueError, zipfile.BadZipFile, ET.ParseError) as exc:
+        raise HTTPException(400, f"Fichier d'import invalide : {exc}") from exc
+
+    imported = images_imported = skipped = 0
+    errors = []
+    for line, row in enumerate(rows, start=2):
+        name = (row.get("name") or "").strip()
+        try:
+            price = float((row.get("price") or "").replace(" ", "").replace(",", "."))
+            stock = int((row.get("stock") or "").strip())
+            if not name or price < 0 or stock < 0:
+                raise ValueError
+        except ValueError:
+            skipped += 1
+            errors.append(f"Ligne {line} ignoree : name, price et stock sont requis.")
+            continue
+
+        try:
+            product = create_product(
+                ProductCreate(
+                    name=name,
+                    price=price,
+                    stock=stock,
+                    sku=(row.get("sku") or "").strip() or None,
+                    description=(row.get("description") or "").strip() or None,
+                    image_url=(row.get("image_url") or "").strip() or None,
+                    reference_image_url=(row.get("image_url") or "").strip() or None,
+                ),
+                current,
+            )
+        except HTTPException as exc:
+            skipped += 1
+            errors.append(f"Ligne {line} ignoree : {exc.detail}")
+            continue
+
+        imported += 1
+        image_name = (row.get("image_file") or "").replace("\\", "/").split("/")[-1].lower()
+        if image_name and filename.endswith(".zip"):
+            image = image_files.get(image_name)
+            if image is None:
+                errors.append(f"Ligne {line} : image introuvable dans images/ ({image_name}).")
+                continue
+            try:
+                image_url = save_product_image(
+                    current.company_id, product["id"],
+                    _ArchiveImageUpload(image[0], image[1]), STATIC_DIR,
+                )
+                db.update_product_image(
+                    current.company_id, product["id"], image_url, image_url, None,
+                    datetime.now(tz=timezone.utc).isoformat(),
+                )
+                images_imported += 1
+            except HTTPException as exc:
+                errors.append(f"Ligne {line} : image non importee ({exc.detail}).")
+
+    return {
+        "imported": imported,
+        "images_imported": images_imported,
+        "skipped": skipped,
+        "errors": errors[:20],
+    }
+
+
+@app.get("/api/products", tags=["Produits"])
 def list_products(
-    current: Annotated[TokenData, Depends(get_current_user_or_apikey)]
+    current: Annotated[TokenData, Depends(get_current_user_or_apikey)],
+    page: Optional[int] = Query(default=None, ge=1),
+    per_page: int = Query(default=20, ge=1, le=100),
+    q: str = Query(default="", max_length=100),
 ):
     cid = current.company_id
+    # Sans `page`, on conserve la réponse liste pour les anciens clients/API.
+    if page is not None:
+        items, total = db.page_products(cid, page=page, per_page=per_page, query=q)
+        return {"items": [_enrich(p, cid) for p in items], "page": page,
+                "per_page": per_page, "total": total,
+                "total_pages": max(1, (total + per_page - 1) // per_page)}
     return [_enrich(p, cid) for p in db.all_products(cid)]
 
 
@@ -1380,6 +1471,21 @@ def delete_product(
     return {"message": "Produit supprimé"}
 
 
+@app.post("/api/products/bulk-delete", tags=["Produits"])
+def bulk_delete_products(
+    payload: BulkDeleteProductsRequest,
+    current: Annotated[TokenData, Depends(get_current_user_or_apikey)],
+):
+    deleted = db.delete_products(current.company_id, payload.product_ids)
+    for product in deleted:
+        _audit(
+            current.company_id, current, "product_deleted", "product",
+            object_id=product["id"], object_label=product["name"],
+            details={"sku": product.get("sku"), "bulk": True},
+        )
+    return {"message": f"{len(deleted)} produit(s) supprimé(s)", "deleted": len(deleted)}
+
+
 @app.patch("/api/products/{product_id}/stock", response_model=Product, tags=["Produits"])
 def update_stock(
     product_id: str,
@@ -1456,15 +1562,31 @@ async def update_product_image(
 # VENTES
 # ════════════════════════════════════════════════════════════════════════════
 
-@app.get("/api/sales", response_model=List[Sale], tags=["Ventes"])
+@app.get("/api/sales", tags=["Ventes"])
 def list_sales(
     current: Annotated[TokenData, Depends(get_current_user_or_apikey)],
     period: str = Query(default="all"),
     user_id: Optional[str] = Query(default=None),
+    page: Optional[int] = Query(default=None, ge=1),
+    per_page: int = Query(default=20, ge=1, le=100),
 ):
     selected_user_id = user_id if current.is_admin else current.user_id
     if selected_user_id == "legacy":
         selected_user_id = None
+    if page is not None and period == "all":
+        sales, total = db.page_sales(
+            current.company_id,
+            created_by_user_id=selected_user_id,
+            page=page,
+            per_page=per_page,
+        )
+        return {
+            "items": sales,
+            "page": page,
+            "per_page": per_page,
+            "total": total,
+            "total_pages": max(1, (total + per_page - 1) // per_page),
+        }
     sales = db.all_sales(current.company_id, created_by_user_id=selected_user_id)
     if period == "all":
         return sales
@@ -1776,8 +1898,8 @@ async def _do_verify(code_raw: str, latitude, longitude, request: Request,
                 "valid": False, "already_used": True,
                 "fraud_attempt": True,
                 "product_name":        product["name"] if product else None,
-                "product_image":       product.get("image_url") if product else None,
-                "product_image_url":   product.get("image_url") if product else None,
+                "product_image":       _public_asset_url(product.get("image_url")) if product else None,
+                "product_image_url":   _public_asset_url(product.get("image_url")) if product else None,
                 "product_description": product.get("description") if product else None,
                 "company_name": company.get("name") if company else None,
                 "company_email": company.get("email") if company else None,
@@ -1819,8 +1941,8 @@ async def _do_verify(code_raw: str, latitude, longitude, request: Request,
         "fraud_attempt": False,
         "product_name":        product["name"],
         "product_description": product.get("description"),
-        "product_image":       product.get("image_url"),
-        "product_image_url":   product.get("image_url"),
+        "product_image":       _public_asset_url(product.get("image_url")),
+        "product_image_url":   _public_asset_url(product.get("image_url")),
         "company_name": company.get("name") if company else None,
         "company_email": company.get("email") if company else None,
         "company_status": company.get("status") if company else None,
@@ -1868,12 +1990,12 @@ def preview_code(code: str):
         if ac:
             p = db.get_product(cid, ac["product_id"])
             return {"product_name": p["name"] if p else None,
-                    "product_image_url": p.get("image_url") if p else None,
+                    "product_image_url": _public_asset_url(p.get("image_url")) if p else None,
                     "code_status": ac["status"]}
         p = db.get_product_by_consumer_code(cid, clean)
         if p:
             return {"product_name": p["name"],
-                    "product_image_url": p.get("image_url"),
+                    "product_image_url": _public_asset_url(p.get("image_url")),
                     "code_status": "active"}
     raise HTTPException(404, "Code introuvable")
 
@@ -1882,18 +2004,74 @@ def preview_code(code: str):
 # STATS
 # ════════════════════════════════════════════════════════════════════════════
 
+def _pdf_response(title: str, headers: list[str], rows: list[list], metrics: list[tuple[str, str]] | None = None):
+    """Construit un PDF téléchargeable localement."""
+    try:
+        from reportlab.lib import colors
+        from reportlab.lib.pagesizes import A4, landscape
+        from reportlab.lib.styles import getSampleStyleSheet
+        from reportlab.lib.units import mm
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+    except ImportError as exc:
+        raise HTTPException(503, "Génération PDF indisponible : installez les dépendances du projet.") from exc
+    buffer = BytesIO()
+    document = SimpleDocTemplate(buffer, pagesize=landscape(A4), rightMargin=12 * mm, leftMargin=12 * mm, topMargin=12 * mm, bottomMargin=12 * mm)
+    styles = getSampleStyleSheet()
+    content = [Paragraph(title, styles["Title"]), Paragraph(f"QuickSellPay — généré le {datetime.now().strftime('%d/%m/%Y %H:%M')}", styles["Normal"]), Spacer(1, 8)]
+    if metrics:
+        metric_table = Table([[f"{label} : {value}" for label, value in metrics]])
+        metric_table.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#edf8f7")), ("TEXTCOLOR", (0, 0), (-1, -1), colors.HexColor("#087f78")), ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#cbd5e1")), ("PADDING", (0, 0), (-1, -1), 8)]))
+        content.extend([metric_table, Spacer(1, 10)])
+    table_rows = [headers] + (rows or [["Aucune donnée"] + [""] * (len(headers) - 1)])
+    table = Table(table_rows, repeatRows=1)
+    table.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#087f78")), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white), ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#cbd5e1")), ("FONTSIZE", (0, 0), (-1, -1), 8), ("VALIGN", (0, 0), (-1, -1), "MIDDLE"), ("PADDING", (0, 0), (-1, -1), 5)]))
+    content.append(table)
+    document.build(content)
+    filename = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-") + ".pdf"
+    return Response(content=buffer.getvalue(), media_type="application/pdf", headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+
+
+@app.get("/api/reports/dashboard.pdf", tags=["Rapports"])
+def dashboard_pdf(current: Annotated[TokenData, Depends(get_current_user)]):
+    products = db.all_products(current.company_id)
+    sales = db.all_sales(current.company_id)
+    threshold = int((db.get_company(current.company_id) or {}).get("low_stock_threshold") or 10)
+    low_stock = [p for p in products if int(p.get("stock") or 0) <= threshold]
+    rows = [[p["name"], p.get("sku") or "-", f"{p.get('price', 0):,.0f}", p.get("stock", 0), "Rupture" if int(p.get("stock") or 0) == 0 else "Stock faible"] for p in low_stock]
+    return _pdf_response("État global du stock — alertes", ["Produit", "SKU", "Prix (FCFA)", "Stock", "Statut"], rows, [("Chiffre d’affaires", f"{sum(s.get('total', 0) for s in sales):,.0f} FCFA"), ("Ventes", str(len(sales))), ("Produits", str(len(products))), ("Alertes stock", str(len(low_stock)))])
+
+
+@app.get("/api/reports/products.pdf", tags=["Rapports"])
+def products_pdf(current: Annotated[TokenData, Depends(get_current_user)], q: str = Query(default="", max_length=100)):
+    products = db.all_products(current.company_id)
+    if q.strip():
+        needle = q.strip().lower()
+        products = [p for p in products if needle in p["name"].lower() or needle in (p.get("sku") or "").lower()]
+    rows = [[p["name"], p.get("sku") or "-", f"{p.get('price', 0):,.0f}", p.get("stock", 0), "Rupture" if p.get("stock", 0) == 0 else ("Stock faible" if p.get("stock", 0) < 10 else "En stock")] for p in products]
+    return _pdf_response("Liste des produits", ["Produit", "SKU", "Prix (FCFA)", "Stock", "Statut"], rows)
+
+
+@app.get("/api/reports/sales.pdf", tags=["Rapports"])
+def sales_pdf(current: Annotated[TokenData, Depends(get_current_user)], period: str = Query(default="all"), user_id: str | None = Query(default=None)):
+    sales = list_sales(current=current, period=period, user_id=user_id)
+    rows = [[sale.get("reference") or "-", ", ".join(item.get("product_name") or item.get("name") or "-" for item in (sale.get("items") or [])) or "-", f"{sale.get('total', 0):,.0f}", sale.get("created_by_email") or "-", sale.get("created_at") or "-"] for sale in sales]
+    return _pdf_response("Liste des ventes", ["Référence", "Produit(s)", "Total (FCFA)", "Employé", "Date"], rows)
+
+
 @app.get("/api/stats", tags=["Stats"])
 def get_stats(current: Annotated[TokenData, Depends(get_current_user_or_apikey)]):
     cid      = current.company_id
     products = db.all_products(cid)
     sales    = db.all_sales(cid)
     verif    = db.get_verification_stats(cid)
+    threshold = int((db.get_company(cid) or {}).get("low_stock_threshold") or 10)
     return {
         "total_products":  len(products),
         "total_sales":     len(sales),
         "total_revenue":   sum(s.get("total", 0) for s in sales),
-        "low_stock_count": len([p for p in products if p["stock"] < 10]),
-        "low_stock_items": [p for p in products if p["stock"] < 10][:5],
+        "low_stock_threshold": threshold,
+        "low_stock_count": len([p for p in products if p["stock"] <= threshold]),
+        "low_stock_items": [p for p in products if p["stock"] <= threshold][:5],
         "verifications":   verif,
     }
 

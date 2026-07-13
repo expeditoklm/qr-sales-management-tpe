@@ -9,7 +9,7 @@ Nouveautés v5 :
   • cleanup_blacklist() — nettoyage automatique des entrées expirées
 """
 import sqlite3, json
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from config import get_settings
 from db_driver import mysql_conn, mysql_enabled
@@ -74,6 +74,7 @@ def init_shared_db():
                 contact_email   TEXT,
                 is_vat_registered INTEGER NOT NULL DEFAULT 1,
                 mecef_token     TEXT,
+                low_stock_threshold INTEGER NOT NULL DEFAULT 10,
                 plan            TEXT NOT NULL DEFAULT 'free',
                 status          TEXT NOT NULL DEFAULT 'active',
                 created_at      TEXT NOT NULL
@@ -156,6 +157,7 @@ def init_shared_db():
             _sqlite_add_column_if_missing(conn, "users", "revoked_before",  "TEXT")
             _sqlite_add_column_if_missing(conn, "companies", "is_vat_registered", "INTEGER NOT NULL DEFAULT 1")
             _sqlite_add_column_if_missing(conn, "companies", "mecef_token",       "TEXT")
+            _sqlite_add_column_if_missing(conn, "companies", "low_stock_threshold", "INTEGER NOT NULL DEFAULT 10")
 
 
         else:
@@ -172,6 +174,7 @@ def init_shared_db():
             _mysql_add_column_if_missing(conn, "users",     "revoked_before",   "TEXT")
             _mysql_add_column_if_missing(conn, "companies", "is_vat_registered","INTEGER NOT NULL DEFAULT 1")
             _mysql_add_column_if_missing(conn, "companies", "mecef_token",      "TEXT")
+            _mysql_add_column_if_missing(conn, "companies", "low_stock_threshold", "INTEGER NOT NULL DEFAULT 10")
 
 def _sqlite_add_column_if_missing(conn, table: str, column: str, definition: str):
     cols = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
@@ -397,12 +400,18 @@ def get_company_by_secret_key(secret_key: str) -> dict | None:
 
 
 def insert_company(c: dict):
+    # Valeurs par défaut nécessaires pour les boutiques créées par une ancienne
+    # migration, un script de démonstration ou une nouvelle installation.
+    c = dict(c)
+    c.setdefault("is_vat_registered", 1)
+    c.setdefault("mecef_token", None)
+    c.setdefault("low_stock_threshold", 10)
     with _shared_conn() as conn:
         conn.execute(
             "INSERT INTO companies ("
-            "id,name,email,secret_key,logo_url,commercial_name,rccm,ifu,address,phone,contact_email,is_vat_registered,mecef_token,plan,status,created_at"
+            "id,name,email,secret_key,logo_url,commercial_name,rccm,ifu,address,phone,contact_email,is_vat_registered,mecef_token,low_stock_threshold,plan,status,created_at"
             ") VALUES ("
-            ":id,:name,:email,:secret_key,:logo_url,:commercial_name,:rccm,:ifu,:address,:phone,:contact_email,:is_vat_registered,:mecef_token,:plan,:status,:created_at"
+            ":id,:name,:email,:secret_key,:logo_url,:commercial_name,:rccm,:ifu,:address,:phone,:contact_email,:is_vat_registered,:mecef_token,:low_stock_threshold,:plan,:status,:created_at"
             ")",
             c,
         )
@@ -415,8 +424,8 @@ def all_companies() -> list:
             "s.plan as sub_plan, s.status as sub_status, "
             "s.start_date as subscription_start_date, "
             "s.end_date as subscription_end_date, "
-            "s.stripe_subscription_id as stripe_subscription_id, "
-            "s.stripe_customer_id as stripe_customer_id "
+            "s.stripe_subscription_id as fedapay_transaction_id, "
+            "s.stripe_customer_id as payment_customer_id "
             "FROM companies c LEFT JOIN subscriptions s ON c.id=s.company_id "
             "ORDER BY c.created_at DESC"
         ).fetchall()
@@ -444,7 +453,8 @@ def update_company_profile(company_id: str, payload: dict):
             "UPDATE companies SET "
             "name=:name, commercial_name=:commercial_name, rccm=:rccm, ifu=:ifu, "
             "address=:address, phone=:phone, contact_email=:contact_email, "
-            "is_vat_registered=:is_vat_registered, mecef_token=:mecef_token "
+            "is_vat_registered=:is_vat_registered, mecef_token=:mecef_token, "
+            "low_stock_threshold=:low_stock_threshold "
             "WHERE id=:company_id",
             {
                 "company_id": company_id,
@@ -457,6 +467,7 @@ def update_company_profile(company_id: str, payload: dict):
                 "contact_email": payload["contact_email"],
                 "is_vat_registered": payload.get("is_vat_registered", 1),
                 "mecef_token": payload.get("mecef_token"),
+                "low_stock_threshold": payload.get("low_stock_threshold", 10),
             },
         )
 
@@ -607,6 +618,20 @@ def get_active_plan(company_id: str) -> str:
     sub = get_subscription(company_id)
     if not sub or sub["status"] not in ("active", "trialing"):
         return "free"
+    # Un abonnement payant terminé ne doit plus conserver ses quotas.
+    end_date = sub.get("end_date")
+    if not end_date and sub.get("plan") != "free" and sub.get("start_date"):
+        # Abonnements historiques : même règle de 31 jours que FedaPay.
+        try:
+            end_date = (datetime.fromisoformat(sub["start_date"]) + timedelta(days=31)).isoformat()
+        except (TypeError, ValueError):
+            end_date = None
+    if end_date:
+        try:
+            if datetime.now(tz=timezone.utc) >= datetime.fromisoformat(end_date):
+                return "free"
+        except (TypeError, ValueError):
+            pass
     return sub["plan"]
 
 
@@ -735,6 +760,26 @@ def all_products(company_id: str) -> list:
     return [dict(r) for r in rows]
 
 
+def page_products(company_id: str, page: int = 1, per_page: int = 20, query: str = "") -> tuple[list, int]:
+    """Retourne uniquement la page demandée, filtrée directement en base."""
+    page = max(1, page)
+    per_page = max(1, min(per_page, 100))
+    query = query.strip()
+    where = ""
+    params: list = []
+    if query:
+        where = " WHERE lower(name) LIKE ? OR lower(COALESCE(sku, '')) LIKE ?"
+        needle = f"%{query.lower()}%"
+        params = [needle, needle]
+    with get_conn(company_id) as conn:
+        total = conn.execute(f"SELECT COUNT(*) FROM products{where}", params).fetchone()[0]
+        rows = conn.execute(
+            f"SELECT * FROM products{where} ORDER BY name, id LIMIT ? OFFSET ?",
+            [*params, per_page, (page - 1) * per_page],
+        ).fetchall()
+    return [dict(row) for row in rows], int(total)
+
+
 def count_products(company_id: str) -> int:
     with get_conn(company_id) as conn:
         return conn.execute("SELECT COUNT(*) FROM products").fetchone()[0]
@@ -822,6 +867,20 @@ def delete_product(company_id: str, product_id: str):
         conn.execute("DELETE FROM products WHERE id=?", (product_id,))
 
 
+def delete_products(company_id: str, product_ids: list[str]) -> list[dict]:
+    """Supprime plusieurs produits et retourne ceux réellement supprimés."""
+    ids = list(dict.fromkeys(product_id.strip() for product_id in product_ids if product_id.strip()))
+    if not ids:
+        return []
+    placeholders = ",".join("?" for _ in ids)
+    with get_conn(company_id) as conn:
+        rows = conn.execute(
+            f"SELECT id, name, sku FROM products WHERE id IN ({placeholders})", ids
+        ).fetchall()
+        conn.execute(f"DELETE FROM products WHERE id IN ({placeholders})", ids)
+    return [dict(row) for row in rows]
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # VENTES
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -845,6 +904,37 @@ def all_sales(company_id: str, created_by_user_id: str | None = None) -> list:
         else:
             rows = conn.execute("SELECT * FROM sales ORDER BY created_at DESC").fetchall()
     return [_sale_row(r) for r in rows]
+
+
+def page_sales(
+    company_id: str,
+    created_by_user_id: str | None = None,
+    period_start: str | None = None,
+    period_end: str | None = None,
+    page: int = 1,
+    per_page: int = 20,
+) -> tuple[list, int]:
+    """Charge une page de ventes directement depuis la base."""
+    page = max(1, page)
+    per_page = max(1, min(per_page, 100))
+    clauses, params = [], []
+    if created_by_user_id:
+        clauses.append("created_by_user_id=?")
+        params.append(created_by_user_id)
+    if period_start:
+        clauses.append("created_at>=?")
+        params.append(period_start)
+    if period_end:
+        clauses.append("created_at<?")
+        params.append(period_end)
+    where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+    with get_conn(company_id) as conn:
+        total = conn.execute(f"SELECT COUNT(*) FROM sales{where}", params).fetchone()[0]
+        rows = conn.execute(
+            f"SELECT * FROM sales{where} ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?",
+            [*params, per_page, (page - 1) * per_page],
+        ).fetchall()
+    return [_sale_row(row) for row in rows], int(total)
 
 
 def count_sales_this_month(company_id: str) -> int:
@@ -915,6 +1005,28 @@ def list_audit_logs(company_id: str, user_id: str | None = None, limit: int = 10
             item["details"] = {}
         result.append(item)
     return result
+
+
+def page_audit_logs(company_id: str, user_id: str | None = None, page: int = 1, per_page: int = 20) -> tuple[list, int]:
+    """Pagination SQL du journal d'activité : aucune ligne inutile n'est envoyée."""
+    page = max(1, page)
+    per_page = max(1, min(per_page, 100))
+    where, params = (" WHERE user_id=?", [user_id]) if user_id else ("", [])
+    with get_conn(company_id) as conn:
+        total = conn.execute(f"SELECT COUNT(*) FROM audit_logs{where}", params).fetchone()[0]
+        rows = conn.execute(
+            f"SELECT * FROM audit_logs{where} ORDER BY created_at DESC LIMIT ? OFFSET ?",
+            [*params, per_page, (page - 1) * per_page],
+        ).fetchall()
+    result = []
+    for row in rows:
+        item = dict(row)
+        try:
+            item["details"] = json.loads(item.get("details") or "{}")
+        except Exception:
+            item["details"] = {}
+        result.append(item)
+    return result, int(total)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

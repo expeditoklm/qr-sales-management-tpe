@@ -12,6 +12,7 @@ Améliorations v5 :
 import mimetypes
 import shutil
 import time
+import uuid
 from pathlib import Path
 
 from fastapi import HTTPException
@@ -98,7 +99,10 @@ def _upload_to_s3(client, key: str, upload_file, ext: str) -> str:
                 },
             )
             base_url = (cfg.STORAGE_PUBLIC_BASE_URL or "").rstrip("/")
-            url = f"{base_url}/{key}" if base_url else key
+            # Un même objet R2 peut être remplacé (logo ou photo produit).
+            # Une version dans l'URL évite l'ancienne image conservée en cache.
+            version = uuid.uuid4().hex
+            url = f"{base_url}/{key}?v={version}" if base_url else f"{key}?v={version}"
             print(f"[Storage] S3 upload OK ({attempt}/3) : {key}")
             return url
         except Exception as exc:

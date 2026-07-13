@@ -21,6 +21,9 @@ CREATE TABLE IF NOT EXISTS companies (
     address TEXT,
     phone TEXT,
     contact_email TEXT,
+    is_vat_registered INTEGER NOT NULL DEFAULT 1,
+    mecef_token TEXT,
+    low_stock_threshold INTEGER NOT NULL DEFAULT 10,
     plan VARCHAR(64) NOT NULL DEFAULT 'free',
     status VARCHAR(64) NOT NULL DEFAULT 'active',
     created_at VARCHAR(64) NOT NULL

@@ -38,14 +38,14 @@ class RateLimiter:
 
     def _init_redis(self):
         if not _REDIS_AVAILABLE:
-            print("[RateLimit] redis-py non installé → fallback in-memory")
+            print("[RateLimit] redis-py unavailable -> fallback in-memory")
             return
         try:
             from config import get_settings
             cfg = get_settings()
             url = getattr(cfg, "REDIS_URL", "")
             if not url:
-                print("[RateLimit] REDIS_URL non configuré → fallback in-memory")
+                print("[RateLimit] REDIS_URL missing -> fallback in-memory")
                 return
             client = _redis_lib.from_url(
                 url,
@@ -55,9 +55,9 @@ class RateLimiter:
             )
             client.ping()
             self._redis = client
-            print(f"[RateLimit] Redis connecté → {url}")
+            print("[RateLimit] Redis connected")
         except Exception as exc:
-            print(f"[RateLimit] Redis indisponible ({exc}) → fallback in-memory")
+            print(f"[RateLimit] Redis unavailable ({exc}) -> fallback in-memory")
             self._redis = None
 
     # ── Extraction IP ─────────────────────────────────────────────────────────

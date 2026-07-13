@@ -105,7 +105,9 @@ def create_transaction(
             "firstname": customer_name.split()[0] if customer_name else "Client",
             "lastname":  " ".join(customer_name.split()[1:]) if len(customer_name.split()) > 1 else "",
         },
-        "metadata": {
+        # FedaPay utilise custom_metadata dans l'API actuelle. Ces données
+        # permettent d'associer le paiement à la boutique et au plan.
+        "custom_metadata": {
             "company_id": company_id,
             "plan":       plan,
         },
@@ -197,6 +199,22 @@ def _get_payment_url(transaction_id: str) -> str:
     return url
 
 
+def get_transaction(transaction_id: str) -> dict:
+    """Lit une transaction auprès de FedaPay après le retour du paiement."""
+    try:
+        with httpx.Client(timeout=12) as client:
+            resp = client.get(
+                f"{_base_url()}/transactions/{transaction_id}",
+                headers=_headers(),
+            )
+    except httpx.RequestError as exc:
+        raise HTTPException(503, f"Impossible de vérifier le paiement FedaPay : {exc}") from exc
+    if resp.status_code != 200:
+        raise HTTPException(resp.status_code, f"FedaPay erreur : {_extract_error(resp)}")
+    data = resp.json()
+    return data.get("v1/transaction") or data.get("transaction") or data
+
+
 # ============================================================
 # Verification du webhook
 # ============================================================
@@ -234,7 +252,7 @@ def parse_webhook_event(body: dict) -> dict | None:
     obj        = body.get("object") or body.get("v1/transaction") or {}
 
     status   = str(obj.get("status", "")).lower()
-    metadata = obj.get("metadata") or {}
+    metadata = obj.get("custom_metadata") or obj.get("metadata") or {}
 
     company_id = str(metadata.get("company_id") or "")
     plan       = str(metadata.get("plan") or "basic")
