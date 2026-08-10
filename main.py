@@ -51,7 +51,7 @@ from auth import (
 )
 from models import *
 from rate_limit import make_limiter
-from storage import save_company_logo, save_product_image
+from storage import delete_company_assets, save_company_logo, save_product_image
 from email_utils import send_email
 import fedapay as feda
 from quota import (
@@ -60,6 +60,7 @@ from quota import (
 )
 
 cfg = get_settings()
+cfg.validate_security()
 
 # ─── Sentry init ──────────────────────────────────────────────────────────────
 if _sentry_ready and cfg.SENTRY_DSN:
@@ -81,6 +82,7 @@ else:
 BASE_DIR     = Path(__file__).parent
 FRONTEND_DIR = BASE_DIR / "frontend"
 STATIC_DIR   = BASE_DIR / "static"
+PUBLIC_DIR   = BASE_DIR / "public"
 STATIC_DIR.mkdir(parents=True, exist_ok=True)
 (STATIC_DIR / "images").mkdir(exist_ok=True)
 
@@ -103,7 +105,20 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Content-Security-Policy"] = "frame-ancestors 'none'; base-uri 'self'"
+    if cfg.APP_ENV == "production":
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    return response
+
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+app.mount("/public", StaticFiles(directory=PUBLIC_DIR), name="public")
 
 
 def _generate_company_secret_key() -> str:
@@ -337,7 +352,10 @@ def download_apk(arch: str = "arm64"):
 
 @app.get("/superadmin", response_class=HTMLResponse, include_in_schema=False)
 def page_superadmin():
-    return HTMLResponse((FRONTEND_DIR / "superadmin.html").read_text(encoding="utf-8"))
+    return HTMLResponse(
+        (FRONTEND_DIR / "superadmin.html").read_text(encoding="utf-8"),
+        headers={"Cache-Control": "no-store, max-age=0"},
+    )
 
 @app.get("/verify",      response_class=HTMLResponse, include_in_schema=False)
 @app.get("/verify.html", response_class=HTMLResponse, include_in_schema=False)
@@ -412,7 +430,12 @@ def _ensure_superadmin():
         })
     else:
         _ensure_company_secret(company_id)
-    if db.get_user_by_email(cfg.SUPERADMIN_EMAIL):
+    superadmin = db.get_user_by_email(cfg.SUPERADMIN_EMAIL)
+    if superadmin:
+        if not verify_password(cfg.SUPERADMIN_PASSWORD, superadmin["password_hash"]):
+            db.update_user_password(superadmin["id"], hash_password(cfg.SUPERADMIN_PASSWORD))
+            db.revoke_user_tokens(superadmin["id"])
+            print(f"[AUTH] Mot de passe super-admin synchronisé depuis .env : {cfg.SUPERADMIN_EMAIL}")
         return
     db.insert_user({
         "id":            str(uuid.uuid4()),
@@ -494,7 +517,8 @@ def _ensure_demo_seed():
     print(f"[AUTH] Demo company ready: {DEMO_COMPANY['id']}")
 
 
-_ensure_demo_seed()
+if cfg.ENABLE_DEMO_DATA:
+    _ensure_demo_seed()
 
 
 @app.post("/auth/register", response_model=TokenResponse, status_code=201, tags=["Auth"])
@@ -626,11 +650,10 @@ def forgot_password(payload: ForgotPasswordRequest):
     user = db.get_user_by_email(payload.email)
     if not user:
         return ActionResponse(message="Si l'adresse existe, un email de réinitialisation sera envoyé.")
-    result = _send_reset_password_email(user)
-    return ActionResponse(
-        message="Email de réinitialisation préparé.",
-        preview=result.get("preview"),
-    )
+    _send_reset_password_email(user)
+    # Réponse identique afin de ne pas divulguer l'état de la messagerie ou
+    # un lien à usage unique.
+    return ActionResponse(message="Si l'adresse existe, un email de réinitialisation sera envoyé.")
 
 
 @app.post("/auth/reset-password", response_model=ActionResponse, tags=["Auth"])
@@ -643,6 +666,7 @@ def reset_password(payload: ResetPasswordRequest):
         raise HTTPException(400, "Lien de réinitialisation expiré")
     db.update_user_password(row["user_id"], hash_password(payload.password))
     db.mark_password_reset_token_used(payload.token)
+    db.revoke_user_tokens(row["user_id"])
     return ActionResponse(message="Mot de passe réinitialisé avec succès.")
 
 
@@ -660,6 +684,7 @@ def change_password(
     if payload.current_password == payload.password:
         raise HTTPException(400, "Le nouveau mot de passe doit etre different de l'ancien")
     db.update_user_password(current.user_id, hash_password(payload.password))
+    db.revoke_user_tokens(current.user_id)
     return ActionResponse(message="Mot de passe mis a jour avec succes.")
 
 
@@ -806,26 +831,9 @@ def accept_invite(payload: AcceptInviteRequest):
 
 @app.get("/auth/demo-credentials", tags=["Auth"])
 def demo_credentials():
-    company = db.get_company(DEMO_COMPANY["id"]) or {}
-    return {
-        "company_id": DEMO_COMPANY["id"],
-        "company_name": DEMO_COMPANY["name"],
-        "secret_key": company.get("secret_key", ""),
-        "accounts": [
-            {
-                "label": demo_user["label"],
-                "email": demo_user["email"],
-                "password": demo_user["password"],
-                "role": demo_user["role"],
-            }
-            for demo_user in DEMO_USERS
-        ] + [{
-            "label": "superadmin",
-            "email": cfg.SUPERADMIN_EMAIL,
-            "password": cfg.SUPERADMIN_PASSWORD,
-            "role": "superadmin",
-        }],
-    }
+    # Cette route existait pour les captures de démo. Elle ne doit jamais
+    # exposer d'identifiants, même lorsqu'un environnement local active la démo.
+    raise HTTPException(404, "Route indisponible")
 
 
 @app.get("/auth/me", response_model=UserOut, tags=["Auth"])
@@ -873,7 +881,7 @@ def update_company_profile(
 @app.post("/auth/company-logo", response_model=CompanyBrandingOut, tags=["Auth"])
 async def upload_company_logo(
     request: Request,
-    current: Annotated[TokenData, Depends(get_current_user)],
+    current: Annotated[TokenData, Depends(get_admin_user)],
 ):
     form = await request.form()
     file: UploadFile = form.get("file")
@@ -1091,6 +1099,33 @@ def admin_activate(
     return {"message": f"Boutique {company_id} réactivée"}
 
 
+@app.delete("/admin/companies/{company_id}", tags=["Admin"])
+def admin_delete_company(
+    company_id: str,
+    payload: DeleteCompanyRequest,
+    _: Annotated[TokenData, Depends(get_superadmin_user)],
+):
+    if company_id == "superadmin":
+        raise HTTPException(403, "Le compte superadmin ne peut pas être supprimé")
+    company = db.get_company(company_id)
+    if not company:
+        raise HTTPException(404, "Boutique introuvable")
+    expected_confirmation = f"SUPPRIMER {company_id}"
+    if payload.confirmation != expected_confirmation:
+        raise HTTPException(400, f"Saisissez exactement : {expected_confirmation}")
+
+    # Les fichiers sont supprimés avant les enregistrements : en cas d'échec
+    # du stockage, la boutique reste intacte et l'opération peut être relancée.
+    try:
+        delete_company_assets(company_id, STATIC_DIR)
+        deleted = db.delete_company_permanently(company_id)
+    except Exception as exc:
+        raise HTTPException(500, "Suppression incomplète : aucune nouvelle action automatique n'a été lancée") from exc
+    if not deleted:
+        raise HTTPException(404, "Boutique introuvable")
+    return {"message": f"Boutique {company.get('name') or company_id} supprimée définitivement"}
+
+
 @app.patch("/admin/companies/{company_id}/plan", tags=["Admin"])
 def admin_set_plan(
     company_id: str,
@@ -1146,6 +1181,7 @@ def admin_reset_user_password(
         raise HTTPException(400, "Utilisez la configuration superadmin pour ce compte")
     db.update_user_password(user_id, hash_password(payload.password))
     db.clear_password_reset_tokens_for_user(user_id)
+    db.revoke_user_tokens(user_id)
     return {
         "message": f"Mot de passe reinitialise pour {user['email']}",
         "company_id": user["company_id"],
@@ -1169,6 +1205,7 @@ def admin_reset_company_password(
         raise HTTPException(404, "Aucun compte actif trouvé pour cette boutique")
     db.update_user_password(user["id"], hash_password(payload.password))
     db.clear_password_reset_tokens_for_user(user["id"])
+    db.revoke_user_tokens(user["id"])
     return {
         "message": f"Mot de passe réinitialisé pour {company.get('name') or company_id}",
         "company_id": company_id,
@@ -1227,10 +1264,23 @@ def _csv_import_rows(raw: bytes) -> list[dict]:
     return list(csv.DictReader(io.StringIO(text)))
 
 
+def _safe_zip_entries(entries) -> list:
+    """Bloque les archives qui épuiseraient mémoire ou disque à l'extraction."""
+    if len(entries) > 1_000:
+        raise ValueError("Archive trop volumineuse : trop de fichiers.")
+    total_size = sum(entry.file_size for entry in entries)
+    if total_size > 50 * 1024 * 1024:
+        raise ValueError("Archive trop volumineuse après décompression (maximum 50 Mo).")
+    if any(entry.file_size > 10 * 1024 * 1024 for entry in entries):
+        raise ValueError("Un fichier de l'archive dépasse 10 Mo après décompression.")
+    return entries
+
+
 def _xlsx_import_rows(raw: bytes) -> list[dict]:
     """Lit la premiere feuille d'un fichier XLSX sans dependance externe."""
     ns = {"x": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
     with zipfile.ZipFile(io.BytesIO(raw)) as book:
+        _safe_zip_entries(book.infolist())
         shared = []
         if "xl/sharedStrings.xml" in book.namelist():
             shared_root = ET.fromstring(book.read("xl/sharedStrings.xml"))
@@ -1270,7 +1320,7 @@ class _ArchiveImageUpload:
 
 @app.post("/api/products/import", tags=["Produits"])
 async def import_products_file(
-    current: Annotated[TokenData, Depends(get_current_user)],
+    current: Annotated[TokenData, Depends(get_admin_user)],
     file: UploadFile = File(...),
 ):
     """Importe CSV, XLSX, ou ZIP (produits.xlsx + images/)."""
@@ -1288,7 +1338,9 @@ async def import_products_file(
     try:
         if filename.endswith(".zip"):
             with zipfile.ZipFile(io.BytesIO(raw)) as bundle:
-                entries = [entry for entry in bundle.infolist() if not entry.is_dir()]
+                entries = _safe_zip_entries(
+                    [entry for entry in bundle.infolist() if not entry.is_dir()]
+                )
                 table = next(
                     (entry for entry in entries
                      if entry.filename.replace("\\", "/").lower() in {"produits.csv", "produits.xlsx"}),
@@ -1398,7 +1450,7 @@ def get_product(
 @app.post("/api/products", response_model=Product, status_code=201, tags=["Produits"])
 def create_product(
     payload: ProductCreate,
-    current: Annotated[TokenData, Depends(get_current_user_or_apikey)],
+    current: Annotated[TokenData, Depends(get_admin_user)],
 ):
     check_subscription_active(current.company_id)
     check_product_quota(current.company_id)
@@ -1434,7 +1486,7 @@ def create_product(
 def update_product(
     product_id: str,
     payload: ProductUpdate,
-    current: Annotated[TokenData, Depends(get_current_user_or_apikey)],
+    current: Annotated[TokenData, Depends(get_admin_user)],
 ):
     p = db.get_product(current.company_id, product_id)
     if not p:
@@ -1457,7 +1509,7 @@ def update_product(
 @app.delete("/api/products/{product_id}", tags=["Produits"])
 def delete_product(
     product_id: str,
-    current: Annotated[TokenData, Depends(get_current_user_or_apikey)],
+    current: Annotated[TokenData, Depends(get_admin_user)],
 ):
     p = db.get_product(current.company_id, product_id)
     if not p:
@@ -1474,7 +1526,7 @@ def delete_product(
 @app.post("/api/products/bulk-delete", tags=["Produits"])
 def bulk_delete_products(
     payload: BulkDeleteProductsRequest,
-    current: Annotated[TokenData, Depends(get_current_user_or_apikey)],
+    current: Annotated[TokenData, Depends(get_admin_user)],
 ):
     deleted = db.delete_products(current.company_id, payload.product_ids)
     for product in deleted:
@@ -1490,7 +1542,7 @@ def bulk_delete_products(
 def update_stock(
     product_id: str,
     payload: StockUpdateRequest,
-    current: Annotated[TokenData, Depends(get_current_user_or_apikey)],
+    current: Annotated[TokenData, Depends(get_admin_user)],
 ):
     p = db.get_product(current.company_id, product_id)
     if not p:
@@ -1515,7 +1567,7 @@ def update_stock(
 async def update_product_image(
     product_id: str,
     request: Request,
-    current: Annotated[TokenData, Depends(get_current_user_or_apikey)],
+    current: Annotated[TokenData, Depends(get_admin_user)],
 ):
     p = db.get_product(current.company_id, product_id)
     if not p:
@@ -1737,9 +1789,10 @@ def webhook_sale(
 # ════════════════════════════════════════════════════════════════════════════
 
 def _make_code() -> str:
-    while True:
-        d = ''.join(random.choices(string.digits, k=10))
-        return f"{d[:5]}-{d[5:]}"
+    # 128 bits d'entropie cryptographique : les anciens codes à 10 chiffres
+    # pouvaient être énumérés et random n'est pas destiné aux secrets.
+    raw = secrets.token_hex(16).upper()
+    return "-".join(raw[index:index + 8] for index in range(0, len(raw), 8))
 
 
 @app.post("/api/products/{product_id}/codes/generate",
@@ -1750,7 +1803,7 @@ def _make_code() -> str:
 def generate_codes(
     product_id: str,
     payload: GenerateCodesRequest,
-    current: Annotated[TokenData, Depends(get_current_user_or_apikey)],
+    current: Annotated[TokenData, Depends(get_admin_user)],
 ):
     cid = current.company_id
     product = db.get_product(cid, product_id)
@@ -1776,7 +1829,7 @@ def generate_codes(
          response_model=List[AuthCode], tags=["Codes Auth"])
 def list_codes(
     product_id: str,
-    current: Annotated[TokenData, Depends(get_current_user_or_apikey)],
+    current: Annotated[TokenData, Depends(get_admin_user)],
 ):
     cid = current.company_id
     if not db.get_product(cid, product_id):
@@ -1963,11 +2016,11 @@ async def verify_v1(request: Request):
         body = await request.json()
     except Exception:
         raise HTTPException(400, "JSON invalide")
-    consent = bool(body.get("consent"))
+    # Collecte de géolocalisation temporairement désactivée.
     return await _do_verify(
         body.get("code", ""),
-        body.get("latitude") if consent else None,
-        body.get("longitude") if consent else None,
+        None,
+        None,
         request,
     )
 
@@ -1975,9 +2028,8 @@ async def verify_v1(request: Request):
 @app.post("/api/public/verify", response_model=VerifyResponse, tags=["Client Final"])
 async def verify_v2(payload: VerifyRequest, request: Request):
     _rl_verify.check(request)
-    lat = payload.latitude  if payload.consent else None
-    lon = payload.longitude if payload.consent else None
-    result = await _do_verify(payload.code, lat, lon, request)
+    # Collecte de géolocalisation temporairement désactivée.
+    result = await _do_verify(payload.code, None, None, request)
     return VerifyResponse(**result)
 
 
@@ -2034,7 +2086,10 @@ def _pdf_response(title: str, headers: list[str], rows: list[list], metrics: lis
 @app.get("/api/reports/dashboard.pdf", tags=["Rapports"])
 def dashboard_pdf(current: Annotated[TokenData, Depends(get_current_user)]):
     products = db.all_products(current.company_id)
-    sales = db.all_sales(current.company_id)
+    sales = db.all_sales(
+        current.company_id,
+        created_by_user_id=None if current.is_admin else current.user_id,
+    )
     threshold = int((db.get_company(current.company_id) or {}).get("low_stock_threshold") or 10)
     low_stock = [p for p in products if int(p.get("stock") or 0) <= threshold]
     rows = [[p["name"], p.get("sku") or "-", f"{p.get('price', 0):,.0f}", p.get("stock", 0), "Rupture" if int(p.get("stock") or 0) == 0 else "Stock faible"] for p in low_stock]
@@ -2053,7 +2108,13 @@ def products_pdf(current: Annotated[TokenData, Depends(get_current_user)], q: st
 
 @app.get("/api/reports/sales.pdf", tags=["Rapports"])
 def sales_pdf(current: Annotated[TokenData, Depends(get_current_user)], period: str = Query(default="all"), user_id: str | None = Query(default=None)):
-    sales = list_sales(current=current, period=period, user_id=user_id)
+    sales = list_sales(
+        current=current,
+        period=period,
+        user_id=user_id,
+        page=None,
+        per_page=20,
+    )
     rows = [[sale.get("reference") or "-", ", ".join(item.get("product_name") or item.get("name") or "-" for item in (sale.get("items") or [])) or "-", f"{sale.get('total', 0):,.0f}", sale.get("created_by_email") or "-", sale.get("created_at") or "-"] for sale in sales]
     return _pdf_response("Liste des ventes", ["Référence", "Produit(s)", "Total (FCFA)", "Employé", "Date"], rows)
 
@@ -2062,7 +2123,10 @@ def sales_pdf(current: Annotated[TokenData, Depends(get_current_user)], period: 
 def get_stats(current: Annotated[TokenData, Depends(get_current_user_or_apikey)]):
     cid      = current.company_id
     products = db.all_products(cid)
-    sales    = db.all_sales(cid)
+    # Admins/managers voient les chiffres de la boutique. Un employé ne voit
+    # que ses propres ventes et son propre chiffre d'affaires.
+    sales_user_id = None if current.is_admin or current.user_id == "legacy" else current.user_id
+    sales    = db.all_sales(cid, created_by_user_id=sales_user_id)
     verif    = db.get_verification_stats(cid)
     threshold = int((db.get_company(cid) or {}).get("low_stock_threshold") or 10)
     return {

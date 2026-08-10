@@ -407,10 +407,10 @@
       </div>
       <h1>Authentifier un produit</h1>
     </div>
-    <p>Avant de commencer, vous pouvez autoriser la collecte de localisation. Cette permission est optionnelle et sert uniquement a la securite, a la tracabilite et aux statistiques antifraude.</p>
+    <p>Saisissez le code présent sur votre produit pour vérifier sa provenance et son authenticité.</p>
     <ul>
-      <li>Sans localisation : la verification continue normalement.</li>
-      <li>Avec localisation : les tentatives suspectes sont mieux contextualisees.</li>
+      <li>La vérification ne collecte pas votre position géographique.</li>
+      <li>Le résultat indique immédiatement si le code est valide.</li>
       <li>Les liens ci-dessous permettent de consulter les pages d'information et de conformite.</li>
     </ul>
     <div class="legal-links">
@@ -418,12 +418,6 @@
       <a href="/legal" target="_blank">Mentions légales</a> ·
       <a href="/terms" target="_blank">Politique d'utilisation</a> ·
       <a href="/privacy" target="_blank">Politique de confidentialité</a>
-    </div>
-    <div class="consent-box">
-      <label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer">
-        <input type="checkbox" id="locationConsent" style="margin-top:3px"/>
-        <span>J'accepte le partage de ma position pour la détection antifraude et les statistiques anonymisées.</span>
-      </label>
     </div>
     <div class="intro-actions">
       <button id="continueBtn" onclick="openVerificationForm()">
@@ -463,10 +457,6 @@
     <div id="btnText" style="margin-top:10px;color:var(--text)">En attente du code…</div>
   </div>
 
-  <div class="consent-box">
-    Permission localisation : <strong id="consentState">Non accordée</strong><br>
-    Vous pouvez revenir sur ce choix avant la vérification.
-  </div>
 </div>
 
 <div id="result" class="card" style="padding:0">
@@ -531,7 +521,6 @@ function openVerificationForm() {
   introAccepted = true;
   document.getElementById('introModal').style.display = 'none';
   document.getElementById('inputCard').style.display = 'block';
-  document.getElementById('consentState').textContent = document.getElementById('locationConsent').checked ? 'Accordée' : 'Non accordée';
   inp.focus();
 }
 
@@ -584,19 +573,7 @@ function hideError() {
 }
 
 function getLoc() {
-  return new Promise((resolve) => {
-    if (!document.getElementById('locationConsent').checked) return resolve(null);
-    if (cachedLoc) return resolve(cachedLoc);
-    if (!navigator.geolocation) return resolve(null);
-    navigator.geolocation.getCurrentPosition(
-      (p) => {
-        cachedLoc = { latitude: p.coords.latitude, longitude: p.coords.longitude };
-        resolve(cachedLoc);
-      },
-      () => resolve(null),
-      { timeout: 5000, maximumAge: 300000 }
-    );
-  });
+  return Promise.resolve(null);
 }
 
 async function doVerify() {
@@ -616,7 +593,7 @@ async function doVerify() {
   try {
     const body = {
       code,
-      consent: document.getElementById('locationConsent').checked,
+      consent: false,
     };
     if (loc) {
       body.latitude = loc.latitude;
@@ -691,8 +668,7 @@ function showResult(data, code) {
       <strong>Entreprise</strong><br>
       Nom : <strong>${esc(data.company_name || '—')}</strong><br>
       Email : <strong>${esc(data.company_email || '—')}</strong><br>
-      Statut : <strong>${esc(data.company_status || '—')}</strong><br>
-      Localisation partagée : <strong>${data.location_consent ? 'Oui' : 'Non'}</strong>
+      Statut : <strong>${esc(data.company_status || '—')}</strong>
     `;
   } else {
     companyEl.style.display = 'none';

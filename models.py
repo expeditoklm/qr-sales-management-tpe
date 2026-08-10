@@ -73,6 +73,16 @@ class BulkDeleteProductsRequest(BaseModel):
         return cleaned
 
 
+class DeleteCompanyRequest(BaseModel):
+    """Confirmation explicite requise pour une suppression irréversible."""
+    confirmation: str = Field(..., min_length=1, max_length=240)
+
+    @field_validator("confirmation")
+    @classmethod
+    def normalize_confirmation(cls, value: str) -> str:
+        return value.strip()
+
+
 class LoginRequest(BaseModel):
     identifier: Optional[str] = None
     email: Optional[str] = None

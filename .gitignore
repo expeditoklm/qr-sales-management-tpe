@@ -42,3 +42,4 @@ Thumbs.db
 dist/
 build/
 *.egg-info/
+static/downloads/*.apk

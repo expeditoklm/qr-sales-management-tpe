@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: qr-sales-management-tpe
+    env: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    disk:
+      name: sqldata
+      mountPath: /app/data
+      sizeGB: 1

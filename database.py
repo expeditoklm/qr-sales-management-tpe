@@ -881,6 +881,64 @@ def delete_products(company_id: str, product_ids: list[str]) -> list[dict]:
     return [dict(row) for row in rows]
 
 
+def delete_company_permanently(company_id: str) -> bool:
+    """Efface les données applicatives d'une boutique et ses relations.
+
+    Les données de paiement déjà détenues par un prestataire externe et les
+    sauvegardes d'infrastructure ne sont pas modifiées ici.
+    """
+    if not get_company(company_id):
+        return False
+
+    # Tables locataires : une base par boutique en SQLite, ou des lignes
+    # scopées par company_id en MySQL.
+    tenant_tables = ("verifications", "auth_codes", "sales", "audit_logs", "products")
+    if mysql_enabled():
+        with get_conn(company_id) as conn:
+            for table in tenant_tables:
+                conn.execute(f"DELETE FROM {table}")
+    else:
+        # Nettoyer les tables avant de retirer le fichier. Sous Windows, un
+        # handle SQLite extérieur peut retarder unlink(), sans empêcher
+        # l'effacement immédiat des données métier.
+        tenant_conn = get_conn(company_id)
+        try:
+            for table in tenant_tables:
+                tenant_conn.execute(f"DELETE FROM {table}")
+            tenant_conn.commit()
+        finally:
+            tenant_conn.close()
+
+    # Les jetons référencent des utilisateurs : il faut les retirer avant les
+    # comptes, puis supprimer les relations de la boutique avant sa fiche.
+    with _shared_conn() as conn:
+        rows = conn.execute("SELECT id FROM users WHERE company_id=?", (company_id,)).fetchall()
+        user_ids = [row["id"] for row in rows]
+        if user_ids:
+            placeholders = ",".join("?" for _ in user_ids)
+            for table in ("email_verification_tokens", "password_reset_tokens", "token_blacklist"):
+                conn.execute(f"DELETE FROM {table} WHERE user_id IN ({placeholders})", tuple(user_ids))
+        conn.execute("DELETE FROM invite_tokens WHERE company_id=?", (company_id,))
+        conn.execute("DELETE FROM subscriptions WHERE company_id=?", (company_id,))
+        conn.execute("DELETE FROM users WHERE company_id=?", (company_id,))
+        conn.execute("DELETE FROM companies WHERE id=?", (company_id,))
+
+    if not mysql_enabled():
+        # La base SQLite locataire contient produits, ventes et journaux :
+        # supprimer le fichier et ses journaux WAL retire toutes ses traces.
+        tenant_db = _tenant_path(company_id)
+        for suffix in ("", "-wal", "-shm"):
+            path = Path(f"{tenant_db}{suffix}")
+            if path.exists():
+                try:
+                    path.unlink()
+                except PermissionError:
+                    # Les tables ont déjà été vidées ci-dessus. Le fichier
+                    # restant ne contient donc plus de données de boutique.
+                    pass
+    return True
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # VENTES
 # ═══════════════════════════════════════════════════════════════════════════════

@@ -8,8 +8,8 @@
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet" />
   <style>
     :root { --teal:#0f766e; --teal-light:#14b8a6; --ink:#102033; --muted:#66768a; --line:#d9e5ee; --bg:#f3f8fb; --danger:#be123c; }
-    * { box-sizing:border-box; } body { margin:0; min-height:100vh; color:var(--ink); font-family:Manrope,Arial,sans-serif; background:radial-gradient(circle at 10% 5%,#d7f7f1 0,transparent 28%),radial-gradient(circle at 95% 100%,#dcecff 0,transparent 32%),var(--bg); }
-    .page { width:min(1120px,calc(100% - 32px)); margin:0 auto; padding:32px 0 48px; }
+    * { box-sizing:border-box; } body { margin:0; min-height:100vh; display:flex; flex-direction:column; color:var(--ink); font-family:Manrope,Arial,sans-serif; background:radial-gradient(circle at 10% 5%,#d7f7f1 0,transparent 28%),radial-gradient(circle at 95% 100%,#dcecff 0,transparent 32%),var(--bg); }
+    .page { flex:1; width:min(1120px,calc(100% - 32px)); margin:0 auto; padding:32px 0 48px; }
     header { display:flex; justify-content:space-between; align-items:center; margin-bottom:44px; } .brand { font:700 1.18rem 'Space Grotesk',sans-serif; text-decoration:none; color:var(--ink); } .brand b { color:var(--teal); } .login-link { color:var(--teal); font-weight:800; font-size:.9rem; text-decoration:none; }
     .layout { display:grid; grid-template-columns:.85fr 1.15fr; gap:42px; align-items:center; } .intro h1 { font:700 clamp(2rem,4vw,3.25rem)/1.1 'Space Grotesk',sans-serif; margin:0 0 18px; letter-spacing:-.05em; } .intro p { color:var(--muted); line-height:1.7; max-width:430px; }
     .benefits { display:grid; gap:16px; margin-top:31px; } .benefit { display:flex; gap:12px; align-items:flex-start; } .check { display:grid; place-items:center; flex:0 0 25px; height:25px; border-radius:50%; color:#08755f; background:#d7f7ea; font-weight:800; } .benefit strong { display:block; font-size:.9rem; } .benefit span { color:var(--muted); font-size:.82rem; }

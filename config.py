@@ -7,6 +7,7 @@ from functools import lru_cache
 
 _env_file = Path(__file__).parent / ".env"
 _base_dir = Path(__file__).parent
+_file_env = {}
 if _env_file.exists():
     # Le fichier .env est partage entre Windows et les hebergeurs Linux :
     # utiliser explicitement UTF-8 au lieu de l'encodage local Windows (cp1252).
@@ -14,30 +15,33 @@ if _env_file.exists():
         line = line.strip()
         if line and not line.startswith("#") and "=" in line:
             key, _, val = line.partition("=")
-            os.environ.setdefault(key.strip(), val.strip())
+            _file_env[key.strip()] = val.strip()
 
 
 def _get(key, default=""):
-    return os.environ.get(key, default)
+    # Le fichier local reste prioritaire afin que les changements soient pris
+    # en compte par le reloader Uvicorn, dont le processus parent peut conserver
+    # d'anciennes variables d'environnement en mémoire.
+    return _file_env.get(key, os.environ.get(key, default))
 
 def _get_int(key, default):
     try:
-        return int(os.environ.get(key, str(default)))
+        return int(_get(key, str(default)))
     except ValueError:
         return default
 
 def _get_float(key, default):
     try:
-        return float(os.environ.get(key, str(default)))
+        return float(_get(key, str(default)))
     except ValueError:
         return default
 
 def _get_list(key, default=""):
-    val = os.environ.get(key, default)
+    val = _get(key, default)
     return [v.strip() for v in val.split(",") if v.strip()]
 
 def _get_path(key, default):
-    raw = os.environ.get(key, default).strip()
+    raw = _get(key, default).strip()
     path = Path(raw)
     if path.is_absolute():
         return path
@@ -50,6 +54,12 @@ def get_settings():
 
 
 class Settings:
+    # Les comptes de démonstration sont désactivés par défaut, y compris en
+    # production. Pour un environnement local, définissez explicitement
+    # ENABLE_DEMO_DATA=true.
+    APP_ENV = _get("APP_ENV", "production").strip().lower()
+    ENABLE_DEMO_DATA = _get("ENABLE_DEMO_DATA", "false").lower() in ("1", "true", "yes", "on")
+
     # JWT
     JWT_SECRET = _get("JWT_SECRET", "dev-secret-CHANGE-IN-PROD-min32chars!!")
     JWT_ALGORITHM = _get("JWT_ALGORITHM", "HS256")
@@ -110,6 +120,9 @@ class Settings:
     MYSQL_DATABASE = _get("MYSQL_DATABASE", "quicksellpay")
     MYSQL_USER     = _get("MYSQL_USER", "quicksellpay")
     MYSQL_PASSWORD = _get("MYSQL_PASSWORD", "")
+    MYSQL_POOL_SIZE = _get_int("MYSQL_POOL_SIZE", 10)
+    MYSQL_POOL_TIMEOUT = _get_int("MYSQL_POOL_TIMEOUT", 10)
+    MYSQL_CONNECT_TIMEOUT = _get_int("MYSQL_CONNECT_TIMEOUT", 10)
 
     # Stockage images : local | s3 | r2
     STORAGE_PROVIDER          = _get("STORAGE_PROVIDER", "local").lower()
@@ -149,5 +162,21 @@ class Settings:
     FEDAPAY_ENV             = _get("FEDAPAY_ENV", "sandbox")
     # Tarifs mensuels en XOF (Franc CFA d'Afrique de l'Ouest)
     FEDAPAY_PRICE_BASIC      = _get_int("FEDAPAY_PRICE_BASIC",      5000)
-    FEDAPAY_PRICE_PRO        = _get_int("FEDAPAY_PRICE_PRO",       15000)
-    FEDAPAY_PRICE_ENTERPRISE = _get_int("FEDAPAY_PRICE_ENTERPRISE", 30000)
+    FEDAPAY_PRICE_PRO        = _get_int("FEDAPAY_PRICE_PRO",       10000)
+    FEDAPAY_PRICE_ENTERPRISE = _get_int("FEDAPAY_PRICE_ENTERPRISE", 15000)
+
+    def validate_security(self) -> None:
+        """Refuse un démarrage production avec les secrets de développement."""
+        if self.APP_ENV != "production":
+            return
+        insecure = []
+        if self.JWT_SECRET == "dev-secret-CHANGE-IN-PROD-min32chars!!" or len(self.JWT_SECRET) < 32:
+            insecure.append("JWT_SECRET")
+        if self.SUPERADMIN_PASSWORD == "AdminPassword123!" or len(self.SUPERADMIN_PASSWORD) < 12:
+            insecure.append("SUPERADMIN_PASSWORD")
+        if insecure:
+            raise RuntimeError(
+                "Configuration production non sécurisée : configurez "
+                + ", ".join(insecure)
+                + " dans les variables d'environnement."
+            )

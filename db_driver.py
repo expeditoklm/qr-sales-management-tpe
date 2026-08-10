@@ -1,4 +1,6 @@
 import re
+from queue import Empty, Full, LifoQueue
+from threading import BoundedSemaphore
 from typing import Any, Iterable
 
 from config import get_settings
@@ -6,6 +8,9 @@ from config import get_settings
 
 cfg = get_settings()
 TENANT_TABLES = ("products", "sales", "audit_logs", "auth_codes", "verifications")
+_MYSQL_POOL_SIZE = max(1, cfg.MYSQL_POOL_SIZE)
+_MYSQL_POOL = LifoQueue(maxsize=_MYSQL_POOL_SIZE)
+_MYSQL_POOL_SLOTS = BoundedSemaphore(_MYSQL_POOL_SIZE)
 
 
 MYSQL_SHARED_SCHEMA = """
@@ -21,9 +26,6 @@ CREATE TABLE IF NOT EXISTS companies (
     address TEXT,
     phone TEXT,
     contact_email TEXT,
-    is_vat_registered INTEGER NOT NULL DEFAULT 1,
-    mecef_token TEXT,
-    low_stock_threshold INTEGER NOT NULL DEFAULT 10,
     plan VARCHAR(64) NOT NULL DEFAULT 'free',
     status VARCHAR(64) NOT NULL DEFAULT 'active',
     created_at VARCHAR(64) NOT NULL
@@ -208,17 +210,50 @@ class MySQLConnection:
 
         self.tenant_id = tenant_id
         self._pymysql = pymysql
-        self._conn = pymysql.connect(
-            host=cfg.MYSQL_HOST,
-            port=cfg.MYSQL_PORT,
-            user=cfg.MYSQL_USER,
-            password=cfg.MYSQL_PASSWORD,
-            database=cfg.MYSQL_DATABASE,
-            charset="utf8mb4",
-            cursorclass=DictCursor,
-            autocommit=False,
-        )
-        self._conn.cursor().execute("SET FOREIGN_KEY_CHECKS=1")
+        self._closed = False
+        if not _MYSQL_POOL_SLOTS.acquire(timeout=max(1, cfg.MYSQL_POOL_TIMEOUT)):
+            raise pymysql.err.OperationalError(
+                1040,
+                f"Pool MySQL sature apres {cfg.MYSQL_POOL_TIMEOUT}s",
+            )
+        self._conn = None
+        try:
+            try:
+                self._conn = _MYSQL_POOL.get_nowait()
+            except Empty:
+                pass
+            if self._conn is not None:
+                try:
+                    self._conn.ping(reconnect=False)
+                except Exception:
+                    try:
+                        self._conn.close()
+                    finally:
+                        self._conn = None
+            if self._conn is None:
+                self._conn = pymysql.connect(
+                    host=cfg.MYSQL_HOST,
+                    port=cfg.MYSQL_PORT,
+                    user=cfg.MYSQL_USER,
+                    password=cfg.MYSQL_PASSWORD,
+                    database=cfg.MYSQL_DATABASE,
+                    charset="utf8mb4",
+                    cursorclass=DictCursor,
+                    autocommit=False,
+                    connect_timeout=max(1, cfg.MYSQL_CONNECT_TIMEOUT),
+                    read_timeout=30,
+                    write_timeout=30,
+                )
+            with self._conn.cursor() as cursor:
+                cursor.execute("SET FOREIGN_KEY_CHECKS=1")
+        except Exception:
+            if self._conn is not None:
+                try:
+                    self._conn.close()
+                except Exception:
+                    pass
+            _MYSQL_POOL_SLOTS.release()
+            raise
 
     def __enter__(self):
         return self
@@ -231,7 +266,22 @@ class MySQLConnection:
         self.close()
 
     def close(self):
-        self._conn.close()
+        if self._closed:
+            return
+        self._closed = True
+        try:
+            self._conn.ping(reconnect=False)
+            try:
+                _MYSQL_POOL.put_nowait(self._conn)
+            except Full:
+                self._conn.close()
+        except Exception:
+            try:
+                self._conn.close()
+            except Exception:
+                pass
+        finally:
+            _MYSQL_POOL_SLOTS.release()
 
     def execute(self, sql: str, params: Any = None):
         cursor = self._conn.cursor()

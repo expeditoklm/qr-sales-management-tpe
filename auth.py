@@ -216,11 +216,12 @@ async def get_admin_user(
 async def get_superadmin_user(
     creds: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)]
 ) -> TokenData:
-    token = _extract_bearer(creds)
-    payload = _decode_jwt(token)
-    if payload.get("role") != "superadmin":
+    # Un refresh token ne doit jamais appeler les routes admin. Réutiliser le
+    # contrôle normal garantit aussi la révocation et le statut du compte.
+    current = await get_current_user(creds)
+    if not current.is_superadmin:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Rôle superadmin requis")
-    return TokenData(payload)
+    return current
 
 
 # ─── Compatibilité ascendante : API Key header (optionnel) ───────────────────
@@ -235,26 +236,14 @@ async def get_current_user_or_apikey(
     api_key: Annotated[str | None, _Security(_api_key_header)] = None,
 ) -> TokenData:
     """
-    Accepte soit un Bearer JWT (nouveau) soit un X-API-Key (legacy).
+    Accepte uniquement un Bearer JWT. Les anciennes API keys de boutique
+    donnaient un accès administrateur permanent et ne sont plus acceptées.
     """
     if creds:
         return await get_current_user(creds)
 
-    if api_key:
-        company = db.get_company_by_secret_key(api_key.strip())
-        if company:
-            return TokenData({
-                "sub":        "legacy",
-                "company_id": company["id"],
-                "role":       "admin",
-                "type":       "access",
-                "exp":        int((_now_utc() + timedelta(hours=1)).timestamp()),
-                "iat":        int(_now_utc().timestamp()),
-                "jti":        None,
-            })
-
     raise HTTPException(
         status.HTTP_401_UNAUTHORIZED,
-        "Bearer JWT ou X-API-Key requis",
+        "Bearer JWT requis",
         headers={"WWW-Authenticate": "Bearer"},
     )

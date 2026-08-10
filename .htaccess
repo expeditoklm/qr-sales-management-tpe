@@ -1,0 +1,31 @@
+# DO NOT REMOVE. CLOUDLINUX PASSENGER CONFIGURATION BEGIN
+PassengerAppRoot "/home/c2559523c/public_html/tunelaf.com/quicksellpay"
+PassengerBaseURI "/"
+PassengerPython "/home/c2559523c/virtualenv/public_html/tunelaf.com/quicksellpay/3.11/bin/python"
+# DO NOT REMOVE. CLOUDLINUX PASSENGER CONFIGURATION END
+
+DirectoryIndex passenger_wsgi.py
+
+RewriteEngine On
+
+# Laisser passer les vrais fichiers et dossiers
+RewriteCond %{REQUEST_FILENAME} -f [OR]
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^ - [L]
+
+# Desactiver le cache pour les routes backend
+<IfModule LiteSpeed>
+RewriteRule ^(auth|api)(/.*)?$ - [E=Cache-Control:no-cache]
+</IfModule>
+
+<IfModule mod_headers.c>
+SetEnvIf Request_URI "^/(auth|api)/" NO_CACHE=1
+Header set Cache-Control "no-store, no-cache, must-revalidate, max-age=0" env=NO_CACHE
+Header set Pragma "no-cache" env=NO_CACHE
+Header set Expires "0" env=NO_CACHE
+</IfModule>
+
+# DO NOT REMOVE OR MODIFY. CLOUDLINUX ENV VARS CONFIGURATION BEGIN
+<IfModule Litespeed>
+</IfModule>
+# DO NOT REMOVE OR MODIFY. CLOUDLINUX ENV VARS CONFIGURATION END

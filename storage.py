@@ -21,7 +21,7 @@ from config import get_settings
 cfg = get_settings()
 
 # ── Types autorisés ────────────────────────────────────────────────────────────
-_ALLOWED_EXTENSIONS  = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
+_ALLOWED_EXTENSIONS  = {".jpg", ".jpeg", ".png", ".webp"}
 _ALLOWED_MIME_TYPES  = {
     "image/jpeg", "image/png", "image/webp", "image/gif",
     "application/octet-stream",  # fallback quand le MIME n'est pas détecté
@@ -54,7 +54,19 @@ def _validate_upload(upload_file) -> None:
     if ext and ext not in _ALLOWED_EXTENSIONS:
         raise HTTPException(
             status_code=415,
-            detail=f"Type de fichier non autorisé : {ext}. Utilisez JPG, PNG, WebP ou GIF.",
+            detail=f"Type de fichier non autorisé : {ext}. Utilisez JPG, PNG ou WebP.",
+        )
+    # L'extension ou le Content-Type HTTP viennent du client. Vérifier la
+    # signature binaire évite d'héberger un contenu actif déguisé en image.
+    header = upload_file.file.read(32)
+    upload_file.file.seek(0)
+    is_jpeg = header.startswith(b"\xff\xd8\xff")
+    is_png = header.startswith(b"\x89PNG\r\n\x1a\n")
+    is_webp = header.startswith(b"RIFF") and header[8:12] == b"WEBP"
+    if not (is_jpeg or is_png or is_webp):
+        raise HTTPException(
+            status_code=415,
+            detail="Le contenu du fichier n'est pas une image JPEG, PNG ou WebP valide.",
         )
 
 
@@ -172,3 +184,32 @@ def save_company_logo(company_id: str, upload_file, static_dir: Path) -> str:
     url = f"/static/images/{company_id}/company/logo{ext}"
     print(f"[Storage] Local save : {dest}")
     return url
+
+
+def delete_company_assets(company_id: str, static_dir: Path) -> None:
+    """Supprime uniquement les médias appartenant à une boutique supprimée."""
+    safe_id = "".join(c if c.isalnum() or c in "-_" else "_" for c in company_id)
+    if not safe_id or safe_id != company_id:
+        raise ValueError("Identifiant de boutique invalide pour la suppression des médias")
+
+    if cfg.STORAGE_PROVIDER in {"s3", "r2"}:
+        client = _s3_client()
+        for prefix in (f"products/{safe_id}/", f"companies/{safe_id}/"):
+            continuation = None
+            while True:
+                params = {"Bucket": cfg.STORAGE_BUCKET, "Prefix": prefix}
+                if continuation:
+                    params["ContinuationToken"] = continuation
+                page = client.list_objects_v2(**params)
+                objects = [{"Key": item["Key"]} for item in page.get("Contents", [])]
+                if objects:
+                    client.delete_objects(Bucket=cfg.STORAGE_BUCKET, Delete={"Objects": objects, "Quiet": True})
+                if not page.get("IsTruncated"):
+                    break
+                continuation = page.get("NextContinuationToken")
+        return
+
+    images_root = (static_dir / "images").resolve()
+    company_dir = (images_root / safe_id).resolve()
+    if company_dir != images_root and images_root in company_dir.parents and company_dir.exists():
+        shutil.rmtree(company_dir)

@@ -8,15 +8,10 @@ cfg = get_settings()
 
 def send_email(*, to_email: str, subject: str, text: str, html: str | None = None) -> dict:
     if not cfg.MAIL_ENABLED or not cfg.MAIL_HOST:
-        preview = {
-            "to": to_email,
-            "subject": subject,
-            "text": text,
-            "html": html,
-            "mode": "preview",
-        }
-        print(f"[MAIL PREVIEW] {preview}")
-        return {"sent": False, "preview": preview}
+        # Les liens de vérification/réinitialisation sont des secrets à usage
+        # unique : ne jamais les renvoyer ou les écrire dans les journaux.
+        print("[MAIL] Envoi indisponible : SMTP non configuré")
+        return {"sent": False, "preview": None}
 
     msg = EmailMessage()
     msg["Subject"] = subject
@@ -35,13 +30,5 @@ def send_email(*, to_email: str, subject: str, text: str, html: str | None = Non
             smtp.send_message(msg)
         return {"sent": True, "preview": None}
     except Exception as exc:
-        preview = {
-            "to": to_email,
-            "subject": subject,
-            "text": text,
-            "html": html,
-            "mode": "smtp_error",
-            "error": str(exc),
-        }
-        print(f"[MAIL ERROR] {preview}")
-        return {"sent": False, "preview": preview}
+        print(f"[MAIL] Échec d'envoi : {type(exc).__name__}")
+        return {"sent": False, "preview": None}

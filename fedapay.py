@@ -56,8 +56,8 @@ def _headers() -> dict:
 
 PLAN_PRICES_XOF: dict[str, int] = {
     "basic":      getattr(cfg, "FEDAPAY_PRICE_BASIC",      5000),
-    "pro":        getattr(cfg, "FEDAPAY_PRICE_PRO",       15000),
-    "enterprise": getattr(cfg, "FEDAPAY_PRICE_ENTERPRISE", 30000),
+    "pro":        getattr(cfg, "FEDAPAY_PRICE_PRO",       10000),
+    "enterprise": getattr(cfg, "FEDAPAY_PRICE_ENTERPRISE", 15000),
 }
 
 PLAN_LABELS: dict[str, str] = {
